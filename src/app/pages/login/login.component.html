@@ -1,0 +1,300 @@
+<!-- ================================================
+     WICMIC — Login · Suivi Énergétique
+     ================================================ -->
+<div class="login-shell">
+
+  <!-- ══════════ LEFT PANEL ══════════ -->
+  <aside class="side-panel">
+    <div class="side-orb side-orb--1"></div>
+    <div class="side-orb side-orb--2"></div>
+    <div class="side-dots"></div>
+
+    <div class="side-brand">
+      <div class="brand-icon">
+        <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"
+                stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span class="brand-name">Tri <em>Power</em></span>
+    </div>
+
+    <div class="side-hero">
+      <div class="live-badge">
+        <span class="live-dot"></span>
+        Outil interne Wicmic
+      </div>
+      <h1>Maîtrisez votre<br><strong>performance</strong><br>industrielle.</h1>
+      <p>Électricité, gaz, eau — tous vos flux pilotés en temps réel.</p>
+    </div>
+
+    <div class="side-stats">
+      <div class="stat-item">
+        <div class="stat-icon stat-icon--green">
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="stat-body">
+          <strong>Suivi en temps réel</strong>
+          <span>Électricité · Gaz · Eau</span>
+        </div>
+      </div>
+
+      <div class="stat-item">
+        <div class="stat-icon stat-icon--yellow">
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                  stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+            <path d="M12 9v4M12 17h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="stat-body">
+          <strong>Alertes configurables</strong>
+          <span>Seuils par site et par flux</span>
+        </div>
+      </div>
+
+      <div class="stat-item">
+        <div class="stat-icon stat-icon--blue">
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.8"/>
+            <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.8"/>
+            <rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.8"/>
+            <rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.8"/>
+          </svg>
+        </div>
+        <div class="stat-body">
+          <strong>Tableau de bord unifié</strong>
+          <span>Tous vos sites en un seul écran</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-footer">
+      <span class="side-footer-copy">© 2025 Wicmic — Usage interne</span>
+      <span class="side-footer-version">v2.4.1</span>
+    </div>
+  </aside>
+
+  <!-- ══════════ RIGHT PANEL ══════════ -->
+  <main class="login-main">
+    <div class="login-card">
+
+      <div class="card-header">
+        <div class="card-eyebrow">Accès sécurisé</div>
+        <h2>Bon retour sur<br><span>TriPower</span></h2>
+        <p>Connectez-vous pour accéder à votre tableau de bord énergétique.</p>
+      </div>
+
+      <div *ngIf="errorMsg()" class="alert-error" role="alert">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        {{ errorMsg() }}
+      </div>
+
+      <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
+
+        <!-- Email -->
+        <div class="field-group" [class.field-group--error]="isInvalid(email)">
+          <label for="login-email">Adresse e-mail</label>
+          <div class="input-wrap">
+            <span class="input-icon">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M2 7l10 7 10-7" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+            </span>
+            <input id="login-email" type="email" formControlName="email"
+                   placeholder="vous@wicmic.com" autocomplete="email"
+                   [attr.aria-invalid]="isInvalid(email)"/>
+          </div>
+          <span class="field-error" *ngIf="isInvalid(email)">{{ fieldError(email) }}</span>
+        </div>
+
+        <!-- Password -->
+        <div class="field-group" [class.field-group--error]="isInvalid(password)">
+          <label for="login-password">Mot de passe</label>
+          <div class="input-wrap">
+            <span class="input-icon">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M8 11V7a4 4 0 018 0v4" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+            </span>
+            <input id="login-password"
+                   [type]="showPassword() ? 'text' : 'password'"
+                   formControlName="password" placeholder="••••••••••"
+                   autocomplete="current-password"
+                   [attr.aria-invalid]="isInvalid(password)"/>
+            <button type="button" class="toggle-pw" (click)="togglePassword()"
+                    [attr.aria-label]="showPassword() ? 'Masquer' : 'Afficher'">
+              <svg *ngIf="!showPassword()" width="16" height="16" fill="none" viewBox="0 0 24 24">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" stroke-width="1.5"/>
+                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+              <svg *ngIf="showPassword()" width="16" height="16" fill="none" viewBox="0 0 24 24">
+                <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19M1 1l22 22"
+                      stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <span class="field-error" *ngIf="isInvalid(password)">{{ fieldError(password) }}</span>
+        </div>
+
+        <!-- Remember + Forgot -->
+        <div class="form-row">
+          <label class="checkbox-label">
+            <input type="checkbox" formControlName="remember"/>
+            <span class="checkbox-custom"></span>
+            Se souvenir de moi
+          </label>
+          <a routerLink="/forgot-password" class="forgot-link">Mot de passe oublié ?</a>
+        </div>
+
+        <!-- Submit -->
+        <button type="submit" class="btn-submit" [disabled]="isLoading()">
+          <ng-container *ngIf="isLoading(); else submitLabel">
+            <span class="spinner"></span>
+            Connexion en cours…
+          </ng-container>
+          <ng-template #submitLabel>
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+              <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"
+                    stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Se connecter
+          </ng-template>
+        </button>
+
+      </form>
+
+      <!-- ✅ Lien Créer un compte → ouvre le modal admin -->
+      <p class="switch-link">
+        Pas encore de compte ?
+        <a (click)="openAdminModal()" style="cursor:pointer">Créer un compte</a>
+      </p>
+
+      <footer class="card-footer">
+        <a href="#">Mentions légales</a> &middot;
+        <a href="#">Confidentialité</a> &middot;
+        <a href="#">Support</a>
+      </footer>
+
+    </div>
+  </main>
+
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL VÉRIFICATION ADMIN
+     S'affiche quand on clique "Créer un compte"
+     ══════════════════════════════════════════════════════════ -->
+<div class="admin-modal-overlay" *ngIf="showAdminModal()" (click)="closeAdminModal()">
+  <div class="admin-modal" (click)="$event.stopPropagation()">
+
+    <!-- Icône shield -->
+    <div class="admin-modal-icon">
+      <svg width="28" height="28" fill="none" viewBox="0 0 24 24">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+              stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <!-- Titre + message -->
+    <h3 class="admin-modal-title">Accès réservé aux administrateurs</h3>
+    <p class="admin-modal-desc">
+      La création de compte est une action administrative.<br>
+      Veuillez vous identifier en tant qu'<strong>administrateur</strong> pour continuer.
+    </p>
+
+    <!-- Erreur -->
+    <div class="admin-modal-error" *ngIf="adminErrorMsg()">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      {{ adminErrorMsg() }}
+    </div>
+
+    <!-- Formulaire admin -->
+    <form [formGroup]="adminForm" (ngSubmit)="onAdminSubmit()" novalidate class="admin-modal-form">
+
+      <!-- Email admin -->
+      <div class="admin-field" [class.admin-field--error]="isInvalid(adminEmail)">
+        <label>Adresse e-mail administrateur</label>
+        <div class="admin-input-wrap">
+          <span class="admin-input-icon">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24">
+              <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M2 7l10 7 10-7" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+          </span>
+          <input type="email" formControlName="email"
+                 placeholder="admin@wicmic.com"
+                 autocomplete="email"/>
+        </div>
+        <span class="admin-field-error" *ngIf="isInvalid(adminEmail)">
+          {{ fieldError(adminEmail) }}
+        </span>
+      </div>
+
+      <!-- Mot de passe admin -->
+      <div class="admin-field" [class.admin-field--error]="isInvalid(adminPassword)">
+        <label>Mot de passe</label>
+        <div class="admin-input-wrap">
+          <span class="admin-input-icon">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24">
+              <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M8 11V7a4 4 0 018 0v4" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+          </span>
+          <input [type]="showAdminPassword() ? 'text' : 'password'"
+                 formControlName="password"
+                 placeholder="••••••••••"
+                 autocomplete="current-password"/>
+          <button type="button" class="toggle-pw" (click)="toggleAdminPassword()">
+            <svg *ngIf="!showAdminPassword()" width="15" height="15" fill="none" viewBox="0 0 24 24">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" stroke-width="1.5"/>
+              <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+            <svg *ngIf="showAdminPassword()" width="15" height="15" fill="none" viewBox="0 0 24 24">
+              <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19M1 1l22 22"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <span class="admin-field-error" *ngIf="isInvalid(adminPassword)">
+          {{ fieldError(adminPassword) }}
+        </span>
+      </div>
+
+      <!-- Boutons -->
+      <div class="admin-modal-actions">
+        <button type="button" class="btn-cancel" (click)="closeAdminModal()">
+          Annuler
+        </button>
+        <button type="submit" class="btn-admin-submit"
+                [disabled]="adminCheckLoading() || adminForm.invalid">
+          <span class="spinner spinner--sm" *ngIf="adminCheckLoading()"></span>
+          <svg *ngIf="!adminCheckLoading()" width="15" height="15" fill="none" viewBox="0 0 24 24">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          {{ adminCheckLoading() ? 'Vérification…' : 'Confirmer et continuer' }}
+        </button>
+      </div>
+
+    </form>
+
+  </div>
+</div>

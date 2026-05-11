@@ -1,0 +1,384 @@
+<!-- ================================================
+     WICMIC — Register · Création de compte (Admin)
+================================================ -->
+<div class="register-shell">
+
+  <!-- ══════════ LEFT PANEL ══════════ -->
+  <aside class="side-panel">
+    <div class="side-orb side-orb--1"></div>
+    <div class="side-orb side-orb--2"></div>
+    <div class="side-dots"></div>
+
+    <div class="side-brand">
+      <div class="brand-icon">
+        <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"
+                stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span class="brand-name">Wicmic <em>Energy</em></span>
+    </div>
+
+    <div class="side-hero">
+      <div class="live-badge">
+        <span class="live-dot"></span>
+        Espace Administrateur
+      </div>
+      <h1>Créez les<br><strong>accès</strong><br>de votre équipe.</h1>
+      <p>Attribuez les rôles adaptés à chaque collaborateur pour un accès sécurisé à la plateforme Wicmic.</p>
+    </div>
+
+    <!-- Stats internes -->
+    <div class="side-stats">
+      <div class="stat-item">
+        <div class="stat-icon stat-icon--red">
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+                  stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="stat-body">
+          <strong>Accès contrôlé</strong>
+          <span>Seul l'admin peut créer des comptes</span>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon stat-icon--teal">
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"
+                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"
+                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="stat-body">
+          <strong>6 rôles disponibles</strong>
+          <span>Énergie · Eau · Gaz · Électricité · Employé</span>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon stat-icon--blue">
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+            <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="stat-body">
+          <strong>Droits sur mesure</strong>
+          <span>Permissions adaptées à chaque poste</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer panneau gauche -->
+    <div class="side-footer">
+      <span class="side-footer-copy">© 2025 Wicmic — Usage interne</span>
+      <span class="side-footer-version">v2.4.1</span>
+    </div>
+  </aside>
+
+  <!-- ══════════ RIGHT PANEL ══════════ -->
+  <main class="register-main">
+    <div class="register-card">
+
+      <!-- Bannière admin -->
+      <div class="admin-banner">
+        <div class="admin-banner-icon">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+                  stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <span>Connecté en tant qu'<strong>{{ adminName() }}</strong> — Administrateur</span>
+        <button type="button" class="admin-back-btn" (click)="goBack()">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24">
+            <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Dashboard
+        </button>
+      </div>
+
+      <!-- Stepper -->
+      <div class="stepper">
+        <div class="step-item"
+             [class.step-item--active]="step() === 1"
+             [class.step-item--done]="step() > 1">
+          <div class="step-bubble">
+            <ng-container *ngIf="step() > 1; else step1Num">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24">
+                <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.2"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </ng-container>
+            <ng-template #step1Num>1</ng-template>
+          </div>
+          <span>Informations</span>
+        </div>
+        <div class="step-connector" [class.step-connector--done]="step() > 1"></div>
+        <div class="step-item" [class.step-item--active]="step() === 2">
+          <div class="step-bubble">2</div>
+          <span>Rôle</span>
+        </div>
+      </div>
+
+      <!-- Header -->
+      <div class="card-header">
+        <div class="card-eyebrow">Créer un compte</div>
+        <ng-container *ngIf="step() === 1">
+          <h2>Informations du <span>collaborateur</span></h2>
+          <p>Renseignez les coordonnées du nouvel utilisateur.</p>
+        </ng-container>
+        <ng-container *ngIf="step() === 2">
+          <h2>Rôle & <span>permissions</span></h2>
+          <p>Sélectionnez le rôle correspondant au poste du collaborateur.</p>
+        </ng-container>
+      </div>
+
+      <!-- Success -->
+      <div *ngIf="successMsg()" class="alert-success" role="status">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        {{ successMsg() }}
+      </div>
+
+      <!-- Error -->
+      <div *ngIf="errorMsg()" class="alert-error" role="alert">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        {{ errorMsg() }}
+      </div>
+
+      <!-- ══ FORMULAIRE ══ -->
+      <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
+
+        <!-- ═══ STEP 1 ═══ -->
+        <ng-container *ngIf="step() === 1">
+
+          <div class="fields-row">
+            <div class="field-group" [class.field-group--error]="isInvalid('fullName')">
+              <label for="reg-name">Nom complet</label>
+              <div class="input-wrap">
+                <span class="input-icon">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"
+                          stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/>
+                  </svg>
+                </span>
+                <input id="reg-name" type="text" formControlName="fullName"
+                       placeholder="Prénom Nom" autocomplete="name"/>
+              </div>
+              <span class="field-error" *ngIf="isInvalid('fullName')">{{ fieldError('fullName') }}</span>
+            </div>
+
+            <div class="field-group" [class.field-group--error]="isInvalid('company')">
+              <label for="reg-company">Département / Site</label>
+              <div class="input-wrap">
+                <span class="input-icon">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+                          stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                    <path d="M9 22V12h6v10" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+                <input id="reg-company" type="text" formControlName="company"
+                       placeholder="Ex : Atelier A, Site Tunis"/>
+              </div>
+              <span class="field-error" *ngIf="isInvalid('company')">{{ fieldError('company') }}</span>
+            </div>
+          </div>
+
+          <div class="field-group" [class.field-group--error]="isInvalid('email')">
+            <label for="reg-email">Adresse e-mail professionnelle</label>
+            <div class="input-wrap">
+              <span class="input-icon">
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                  <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M2 7l10 7 10-7" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </span>
+              <input id="reg-email" type="email" formControlName="email"
+                     placeholder="collaborateur@wicmic.com" autocomplete="email"/>
+            </div>
+            <span class="field-error" *ngIf="isInvalid('email')">{{ fieldError('email') }}</span>
+          </div>
+
+          <div class="field-group" [class.field-group--error]="isInvalid('password')">
+            <label for="reg-pw">Mot de passe temporaire</label>
+            <div class="input-wrap">
+              <span class="input-icon">
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                  <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M8 11V7a4 4 0 018 0v4" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </span>
+              <input id="reg-pw"
+                     [type]="showPassword() ? 'text' : 'password'"
+                     formControlName="password"
+                     placeholder="••••••••••"/>
+              <button type="button" class="toggle-pw" (click)="togglePassword()"
+                      [attr.aria-label]="showPassword() ? 'Masquer' : 'Afficher'">
+                <svg *ngIf="!showPassword()" width="16" height="16" fill="none" viewBox="0 0 24 24">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" stroke-width="1.5"/>
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+                <svg *ngIf="showPassword()" width="16" height="16" fill="none" viewBox="0 0 24 24">
+                  <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19M1 1l22 22"
+                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <span class="field-error" *ngIf="isInvalid('password')">{{ fieldError('password') }}</span>
+          </div>
+
+          <div class="field-group" [class.field-group--error]="confirmMismatch">
+            <label for="reg-confirm">Confirmer le mot de passe</label>
+            <div class="input-wrap">
+              <span class="input-icon">
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                  <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M8 11V7a4 4 0 018 0v4" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </span>
+              <input id="reg-confirm"
+                     [type]="showConfirm() ? 'text' : 'password'"
+                     formControlName="confirm"
+                     placeholder="••••••••••"/>
+              <button type="button" class="toggle-pw" (click)="toggleConfirm()"
+                      [attr.aria-label]="showConfirm() ? 'Masquer' : 'Afficher'">
+                <svg *ngIf="!showConfirm()" width="16" height="16" fill="none" viewBox="0 0 24 24">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" stroke-width="1.5"/>
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+                <svg *ngIf="showConfirm()" width="16" height="16" fill="none" viewBox="0 0 24 24">
+                  <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19M1 1l22 22"
+                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <span class="field-error" *ngIf="confirmMismatch">Les mots de passe ne correspondent pas.</span>
+          </div>
+
+          <button type="button" class="btn-next" (click)="nextStep()">
+            Continuer
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+              <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+
+        </ng-container>
+
+        <!-- ═══ STEP 2 ═══ -->
+        <ng-container *ngIf="step() === 2">
+
+          <div class="roles-grid">
+            <div class="role-card"
+                 *ngFor="let role of roles; trackBy: trackById"
+                 [class.role-card--selected]="isRoleSelected(role.id)"
+                 [attr.data-color]="role.colorKey"
+                 (click)="selectRole(role.id)">
+
+              <div class="role-check">
+                <svg width="12" height="12" fill="none" viewBox="0 0 24 24">
+                  <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+
+              <div class="role-icon-wrap">
+                <ng-container [ngSwitch]="role.id">
+                  <svg *ngSwitchCase="'administrateur'" width="20" height="20" fill="none" viewBox="0 0 24 24">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+                          stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                  </svg>
+                  <svg *ngSwitchCase="'responsable_energie'" width="20" height="20" fill="none" viewBox="0 0 24 24">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"
+                              stroke="currentColor" stroke-width="1.6"
+                              stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <svg *ngSwitchCase="'responsable_eau'" width="20" height="20" fill="none" viewBox="0 0 24 24">
+                    <path d="M12 2C6 8 4 13 4 16a8 8 0 0016 0c0-3-2-8-8-14z"
+                          stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                  </svg>
+                  <svg *ngSwitchCase="'responsable_gaz'" width="20" height="20" fill="none" viewBox="0 0 24 24">
+                    <path d="M12 2a7 7 0 00-7 7c0 4 3 6 4 9h6c1-3 4-5 4-9a7 7 0 00-7-7z"
+                          stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                    <path d="M9 18h6M10 21h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                  </svg>
+                  <svg *ngSwitchCase="'responsable_electricite'" width="20" height="20" fill="none" viewBox="0 0 24 24">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"
+                          stroke="currentColor" stroke-width="1.6"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <svg *ngSwitchCase="'employe'" width="20" height="20" fill="none" viewBox="0 0 24 24">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"
+                          stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                    <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="1.6"/>
+                  </svg>
+                </ng-container>
+              </div>
+
+              <p class="role-name">{{ role.label }}</p>
+              <p class="role-desc">{{ role.description }}</p>
+
+              <ul class="role-perms">
+                <li *ngFor="let perm of role.permissions">
+                  <span class="perm-dot"></span>{{ perm }}
+                </li>
+              </ul>
+
+            </div>
+          </div>
+
+          <p class="role-hint" *ngIf="roleError()">
+            Veuillez sélectionner un rôle pour continuer.
+          </p>
+
+          <div class="form-actions">
+            <button type="button" class="btn-back" (click)="prevStep()">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24">
+                <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Retour
+            </button>
+            <button type="submit" class="btn-submit" [disabled]="isLoading()">
+              <ng-container *ngIf="isLoading(); else submitLabel">
+                <span class="spinner"></span>
+                Création en cours…
+              </ng-container>
+              <ng-template #submitLabel>
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                  <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"
+                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8"/>
+                  <line x1="19" y1="8" x2="19" y2="14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  <line x1="22" y1="11" x2="16" y2="11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+                Créer le compte
+              </ng-template>
+            </button>
+          </div>
+
+        </ng-container>
+
+      </form>
+
+      <footer class="card-footer">
+        <a href="#">Mentions légales</a> &middot;
+        <a href="#">Confidentialité</a> &middot;
+        <a href="#">Support</a>
+      </footer>
+
+    </div>
+  </main>
+</div>

@@ -1,0 +1,1020 @@
+<div class="shell" [class.nav-collapsed]="navCollapsed">
+
+  <!-- ═══════════════════════════════════════════════════════
+       SIDEBAR NAVIGATION
+  ═══════════════════════════════════════════════════════ -->
+  <aside class="nav">
+
+    <!-- Brand -->
+    <div class="nav-brand">
+      <div class="nav-logo">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#fff"/>
+        </svg>
+      </div>
+      <div class="nav-brand-wrap" *ngIf="!navCollapsed">
+        <span class="nav-brand-name">TriPower</span>
+        <span class="nav-brand-tag">WICMIC · ENERGY</span>
+      </div>
+    </div>
+
+    <!-- User -->
+    <div class="nav-user" *ngIf="!navCollapsed">
+      <div class="nav-avatar">{{ currentUser?.nom?.charAt(0) | uppercase }}</div>
+      <div>
+        <span class="nav-user-name">{{ currentUser?.nom }}</span>
+        <span class="nav-user-role">{{ userRoleLabel }}</span>
+      </div>
+    </div>
+    <div class="nav-avatar nav-avatar--mini" *ngIf="navCollapsed">{{ currentUser?.nom?.charAt(0) | uppercase }}</div>
+
+    <!-- Clock -->
+    <div class="nav-clock" *ngIf="!navCollapsed">
+      <span class="nav-clock-time">{{ currentTime | date:'HH:mm:ss' }}</span>
+      <span class="nav-clock-date">{{ currentTime | date:'EEEE · d MMM yyyy' }}</span>
+    </div>
+
+    <!-- Menu -->
+    <div class="nav-label" *ngIf="!navCollapsed">Navigation</div>
+    <nav class="nav-menu">
+
+      <button class="nav-item" [class.active]="activeTab==='overview'" (click)="activeTab='overview'">
+        <div class="nav-item-icon ico--green">
+          <svg width="15" height="15" fill="none" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5" fill="currentColor"/><rect x="14" y="3" width="7" height="7" rx="1.5" fill="currentColor" opacity="0.6"/><rect x="3" y="14" width="7" height="7" rx="1.5" fill="currentColor" opacity="0.6"/><rect x="14" y="14" width="7" height="7" rx="1.5" fill="currentColor" opacity="0.3"/></svg>
+        </div>
+        <span class="nav-item-text" *ngIf="!navCollapsed">Tableau de bord</span>
+      </button>
+
+      <div class="nav-label nav-label--mt" *ngIf="!navCollapsed && energies.length">Dashboards énergie</div>
+      <ng-container *ngFor="let en of energies">
+        <a class="nav-item" [routerLink]="['/energy', getEnergieRoute(en)]" routerLinkActive="active">
+          <div class="nav-item-icon" [ngStyle]="getEnergieNavStyle(en.idEnergie)">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <span class="nav-item-text" *ngIf="!navCollapsed">{{ getEnergieIcon(en.idEnergie) }} {{ en.nom }}</span>
+        </a>
+      </ng-container>
+
+      <button class="nav-item" [class.active]="activeTab==='equipements'" (click)="activeTab='equipements'">
+        <div class="nav-item-icon ico--teal">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="1.8"/></svg>
+        </div>
+        <span class="nav-item-text" *ngIf="!navCollapsed">Équipements</span>
+        <span class="nav-badge" *ngIf="!navCollapsed && equipements.length">{{ equipements.length }}</span>
+      </button>
+
+      <button class="nav-item" [class.active]="activeTab==='alertes'" (click)="activeTab='alertes'">
+        <div class="nav-item-icon ico--amber">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </div>
+        <span class="nav-item-text" *ngIf="!navCollapsed">Alertes</span>
+        <span class="nav-badge nav-badge--red" *ngIf="alertesNonTraitees > 0">{{ alertesNonTraitees }}</span>
+      </button>
+
+      <button class="nav-item" [class.active]="activeTab==='rapports'" (click)="activeTab='rapports'">
+        <div class="nav-item-icon">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" stroke-width="1.8"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.8"/></svg>
+        </div>
+        <span class="nav-item-text" *ngIf="!navCollapsed">Rapports</span>
+      </button>
+
+      <button class="nav-item" (click)="showChat=true">
+        <div class="nav-item-icon ico--teal">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <span class="nav-item-text" *ngIf="!navCollapsed">Assistant IA</span>
+      </button>
+
+      <div class="nav-label nav-label--mt" *ngIf="!navCollapsed">Analyse avancée</div>
+
+      <button class="nav-item" [class.active]="activeTab==='benchmarking'" (click)="activeTab='benchmarking'">
+        <div class="nav-item-icon ico--purple">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <span class="nav-item-text" *ngIf="!navCollapsed">Benchmarking</span>
+        <span class="nav-new" *ngIf="!navCollapsed">NEW</span>
+      </button>
+
+      <button class="nav-item" [class.active]="activeTab==='previsions'" (click)="activeTab='previsions'">
+        <div class="nav-item-icon ico--accent">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4l3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </div>
+        <span class="nav-item-text" *ngIf="!navCollapsed">Prévisions IA</span>
+        <span class="nav-new" *ngIf="!navCollapsed">NEW</span>
+      </button>
+
+      <button class="nav-item" [class.active]="activeTab==='heatmap'" (click)="activeTab='heatmap'">
+        <div class="nav-item-icon ico--red">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 9h18M3 15h18M9 3v18" stroke="currentColor" stroke-width="1.8"/></svg>
+        </div>
+        <span class="nav-item-text" *ngIf="!navCollapsed">Carte thermique</span>
+        <span class="nav-new" *ngIf="!navCollapsed">NEW</span>
+      </button>
+
+    </nav>
+
+    <!-- Score + footer -->
+    <div class="nav-footer">
+      <div class="eff-block" *ngIf="!navCollapsed && hasEfficiencyData">
+        <div class="eff-label">Score efficacité</div>
+        <div class="eff-ring-wrap">
+          <svg width="54" height="54" viewBox="0 0 54 54">
+            <circle cx="27" cy="27" r="22" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4"/>
+            <circle cx="27" cy="27" r="22" fill="none"
+              [attr.stroke]="efficiencyScore>=80 ? '#10b981' : efficiencyScore>=60 ? '#f59e0b' : '#ef4444'"
+              stroke-width="4" stroke-linecap="round"
+              stroke-dasharray="138.2"
+              [attr.stroke-dashoffset]="138.2 - (efficiencyScore/100)*138.2"
+              transform="rotate(-90 27 27)"/>
+          </svg>
+          <span class="eff-num">{{ efficiencyScore }}</span>
+        </div>
+        <div class="eff-sub" [class.eff-sub--good]="efficiencyScore>=80" [class.eff-sub--warn]="efficiencyScore>=60&&efficiencyScore<80" [class.eff-sub--bad]="efficiencyScore<60">
+          {{ efficiencyScore>=80 ? '✓ Excellent' : efficiencyScore>=60 ? '⚠ Moyen' : '✕ Insuffisant' }}
+        </div>
+      </div>
+
+      <div class="nav-status">
+        <span class="status-dot" [class.status-dot--err]="hasApiErrors"></span>
+        <span class="status-text" *ngIf="!navCollapsed">{{ hasApiErrors ? apiErrorsList.length+' service(s) indisponible(s)' : 'Système opérationnel' }}</span>
+      </div>
+
+      <button class="nav-collapse" (click)="navCollapsed=!navCollapsed">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24">
+          <path [attr.d]="navCollapsed ? 'M9 18l6-6-6-6' : 'M15 18l-6-6 6-6'" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+
+      <button class="nav-logout" (click)="logout()">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span *ngIf="!navCollapsed">Déconnexion</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════════════
+       MAIN
+  ═══════════════════════════════════════════════════════ -->
+  <div class="main">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-live">
+          <span class="live-dot"></span>
+          <span class="live-text">EN LIGNE — {{ currentTime | date:'EEEE d MMMM yyyy' | uppercase }}</span>
+        </div>
+        <h1 class="topbar-title">Bonjour, <span class="topbar-name">{{ currentUser?.nom }}</span> 👋</h1>
+        <p class="topbar-sub">Espace de suivi énergétique — WICMIC</p>
+        <span class="topbar-role">
+          <svg width="10" height="10" fill="none" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="currentColor"/></svg>
+          {{ userRoleLabel }}
+        </span>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-clock">
+          <span class="topbar-time">{{ currentTime | date:'HH:mm:ss' }}</span>
+          <span class="topbar-time-label">HEURE LOCALE</span>
+        </div>
+        <button class="btn-export" (click)="exportRapportPDF()" [disabled]="!totalMesures">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" stroke-width="1.8"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.8"/></svg>
+          Export PDF
+        </button>
+        <div class="api-err-banner" *ngIf="hasApiErrors">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.8"/></svg>
+          API indisponible
+          <button class="btn-xs" (click)="loadAll()">Réessayer</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Loading -->
+    <div class="loading-wrap" *ngIf="loading">
+      <div class="loading-box">
+        <div class="loading-ring"></div>
+        <p class="loading-text">Chargement des données…</p>
+      </div>
+    </div>
+
+    <div class="content" *ngIf="!loading">
+
+      <!-- ══ OVERVIEW ══ -->
+      <section *ngIf="activeTab==='overview'" class="page-fade">
+
+        <!-- Info consultation -->
+        <div class="info-banner info-banner--blue" *ngIf="!canEdit">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          Mode <strong>consultation</strong> — la modification est réservée au responsable énergie et à l'administrateur.
+        </div>
+
+        <!-- Efficiency banner -->
+        <div class="eff-banner" *ngIf="hasEfficiencyData"
+          [class.eff-banner--good]="efficiencyScore>=80"
+          [class.eff-banner--warn]="efficiencyScore>=60&&efficiencyScore<80"
+          [class.eff-banner--bad]="efficiencyScore<60">
+          <div class="eff-banner-left">
+            <div class="eff-banner-score">{{ efficiencyScore }}</div>
+            <div class="eff-banner-info">
+              <div class="eff-banner-title">Score d'efficacité énergétique</div>
+              <div class="eff-banner-sub">Calculé sur {{ totalMesures }} mesures réelles</div>
+              <span class="eff-banner-grade tag"
+                [class.tag--success]="efficiencyScore>=80"
+                [class.tag--warn]="efficiencyScore>=60&&efficiencyScore<80"
+                [class.tag--danger]="efficiencyScore<60">Grade {{ efficiencyGrade }}</span>
+            </div>
+          </div>
+          <div class="eff-banner-right">
+            <div class="eff-bar-track">
+              <div class="eff-bar-fill" [style.width.%]="efficiencyScore"></div>
+            </div>
+            <div class="eff-banner-actions">
+              <button class="btn-ghost btn-sm" (click)="activeTab='benchmarking'">Voir comparatif →</button>
+              <button class="btn-ghost btn-sm" (click)="activeTab='previsions'">Prévisions →</button>
+              <button class="btn-ghost btn-sm" (click)="activeTab='heatmap'">Heatmap →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Onboarding -->
+        <div class="onboarding-banner" *ngIf="!hasEfficiencyData && !mesures.length">
+          <div class="onboarding-ico">📊</div>
+          <div class="onboarding-text">
+            <strong>Bienvenue sur TriPower WICMIC</strong>
+            <p>Commencez par saisir vos premières mesures pour voir vos indicateurs de performance.</p>
+          </div>
+          <button class="btn-primary" (click)="showMesureModal=true" *ngIf="canEdit">Saisir une mesure →</button>
+        </div>
+
+        <!-- KPIs -->
+        <div class="kpi-grid">
+          <!-- Coût mois -->
+          <div class="kpi kpi--accent">
+            <div class="kpi-top">
+              <div class="kpi-icon kpi-icon--accent">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v8M8 10h8M8 14h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </div>
+            </div>
+            <span class="kpi-val">{{ coutMoisCourant }}</span>
+            <span class="kpi-lbl">Coût ce mois (DT)</span>
+            <div class="kpi-trend" [class.kpi-trend--up]="tendanceMois==='up'" [class.kpi-trend--down]="tendanceMois==='down'" [class.kpi-trend--flat]="tendanceMois==='flat'">
+              <span *ngIf="tendanceMois==='up'">↑ +{{ variationMois }}% vs mois précédent</span>
+              <span *ngIf="tendanceMois==='down'">↓ -{{ variationMois }}% vs mois précédent</span>
+              <span *ngIf="tendanceMois==='flat' && variationMois!=='—'">→ Stable vs mois précédent</span>
+              <span *ngIf="variationMois==='—'" class="kpi-trend--nodata">Aucune donnée précédente</span>
+            </div>
+          </div>
+
+          <!-- Mesures -->
+          <div class="kpi kpi--green">
+            <div class="kpi-top">
+              <div class="kpi-icon kpi-icon--green">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M7 16l4-4 4 4 4-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+            </div>
+            <span class="kpi-val">{{ totalMesures }}</span>
+            <span class="kpi-lbl">Mesures relevées</span>
+            <div class="kpi-trend kpi-trend--flat">{{ mesuresAujourd }} aujourd'hui · {{ mesuresSemaine }} cette semaine</div>
+          </div>
+
+          <!-- Alertes -->
+          <div class="kpi kpi--amber">
+            <div class="kpi-top">
+              <div class="kpi-icon kpi-icon--amber">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              </div>
+              <button class="kpi-see" (click)="activeTab='alertes'">Voir →</button>
+            </div>
+            <span class="kpi-val" [class.kpi-val--danger]="alertesNonTraitees>0">{{ alertesNonTraitees }}</span>
+            <span class="kpi-lbl">Alertes actives</span>
+            <div class="kpi-trend" [class.kpi-trend--up]="alertesNonTraitees>0" [class.kpi-trend--flat]="alertesNonTraitees===0">
+              <span *ngIf="alertesCritiques>0">⚠ {{ alertesCritiques }} critique(s)</span>
+              <span *ngIf="alertesCritiques===0&&alertesNonTraitees===0">✓ Aucune alerte active</span>
+            </div>
+          </div>
+
+          <!-- Équipements -->
+          <div class="kpi kpi--green">
+            <div class="kpi-top">
+              <div class="kpi-icon kpi-icon--teal">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="1.8"/></svg>
+              </div>
+              <button class="kpi-see" (click)="activeTab='equipements'">Voir →</button>
+            </div>
+            <span class="kpi-val">{{ equipementsActifs }}</span>
+            <span class="kpi-lbl">Équipements actifs</span>
+            <div class="kpi-trend" [class.kpi-trend--flat]="equipementsMaintenance===0" [class.kpi-trend--up]="equipementsMaintenance>0">
+              <span *ngIf="equipementsMaintenance>0">⚠ {{ equipementsMaintenance }} en maintenance</span>
+              <span *ngIf="equipementsMaintenance===0&&equipements.length>0">✓ Tous opérationnels</span>
+              <span *ngIf="!equipements.length">Aucun équipement</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-row">
+          <div class="glass">
+            <div class="chart-hd">
+              <div>
+                <h3 class="chart-title">Évolution des consommations</h3>
+                <p class="chart-sub">{{ chartDays }} derniers jours{{ showComparaison ? ' · comparatif N vs N-1' : '' }}</p>
+              </div>
+              <div class="chart-controls">
+                <span class="trend-badge trend-badge--up"   *ngIf="tendance==='up'">↑ HAUSSE</span>
+                <span class="trend-badge trend-badge--down" *ngIf="tendance==='down'">↓ BAISSE</span>
+                <span class="trend-badge trend-badge--flat" *ngIf="tendance==='stable'">→ STABLE</span>
+                <button class="comp-toggle" [class.active]="showComparaison" (click)="showComparaison=!showComparaison">N vs N-1</button>
+                <div class="period-tabs">
+                  <button [class.active]="chartPeriod==='7j'"  (click)="chartPeriod='7j'">7j</button>
+                  <button [class.active]="chartPeriod==='30j'" (click)="chartPeriod='30j'">30j</button>
+                  <button [class.active]="chartPeriod==='90j'" (click)="chartPeriod='90j'">90j</button>
+                </div>
+              </div>
+            </div>
+            <div class="chart-legend" *ngIf="showComparaison">
+              <span class="leg-dot leg-dot--accent"></span> Période N
+              <span class="leg-dot leg-dot--muted" style="margin-left:10px"></span> Période N-1
+            </div>
+            <div class="chart-empty" *ngIf="!hasChartData">
+              <svg width="40" height="40" fill="none" viewBox="0 0 24 24" style="opacity:0.15"><path d="M3 3v18h18" stroke="currentColor" stroke-width="1.8"/><path d="M7 16l4-4 4 4 4-8" stroke="currentColor" stroke-width="1.8"/></svg>
+              <p>Aucune mesure sur les {{ chartDays }} derniers jours</p>
+              <button class="btn-ghost btn-sm" (click)="showMesureModal=true" *ngIf="canEdit">Saisir une mesure</button>
+            </div>
+            <div class="chart-wrap" *ngIf="hasChartData">
+              <svg [attr.viewBox]="'0 0 '+CHART_W+' '+(CHART_H+32)" class="chart-svg" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                  <linearGradient id="grad-area" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#6366f1" stop-opacity="0.25"/>
+                    <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+                  </linearGradient>
+                  <linearGradient id="grad-line" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#6366f1"/>
+                    <stop offset="100%" stop-color="#a78bfa"/>
+                  </linearGradient>
+                  <linearGradient id="grad-forecast" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#14b8a6"/>
+                    <stop offset="100%" stop-color="#06b6d4"/>
+                  </linearGradient>
+                </defs>
+                <!-- Grid -->
+                <line *ngFor="let l of yAxisLabels" [attr.x1]="CHART_PAD_X" [attr.y1]="l.y" [attr.x2]="CHART_W-CHART_PAD_X" [attr.y2]="l.y" stroke="rgba(0,0,0,0.06)" stroke-width="1"/>
+                <text *ngFor="let l of yAxisLabels" [attr.x]="CHART_PAD_X-7" [attr.y]="l.y+4" text-anchor="end" class="chart-ax-lbl">{{ l.label }}</text>
+                <!-- Threshold -->
+                <line [attr.x1]="CHART_PAD_X" [attr.y1]="thresholdY" [attr.x2]="CHART_W-CHART_PAD_X" [attr.y2]="thresholdY" stroke="#ef4444" stroke-width="1" stroke-dasharray="5 4" opacity="0.4"/>
+                <!-- N-1 comparison -->
+                <g *ngIf="showComparaison">
+                  <path [attr.d]="linePathN1" fill="none" stroke="rgba(0,0,0,0.15)" stroke-width="1.5" stroke-dasharray="5 3"/>
+                  <g *ngFor="let p of chartPointsN1">
+                    <circle *ngIf="p.value>0" [attr.cx]="p.x" [attr.cy]="p.y" r="3" fill="rgba(0,0,0,0.1)" stroke="rgba(0,0,0,0.2)" stroke-width="1.5" (mouseenter)="hoveredPointN1=p" (mouseleave)="hoveredPointN1=null" class="chart-dot"/>
+                  </g>
+                  <g *ngIf="hoveredPointN1">
+                    <rect [attr.x]="hoveredPointN1.x-40" [attr.y]="hoveredPointN1.y-46" width="80" height="32" rx="6" fill="#1e1e2e" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+                    <text [attr.x]="hoveredPointN1.x" [attr.y]="hoveredPointN1.y-34" text-anchor="middle" class="chart-tip-lbl">N-1</text>
+                    <text [attr.x]="hoveredPointN1.x" [attr.y]="hoveredPointN1.y-20" text-anchor="middle" class="chart-tip-val">{{ hoveredPointN1.value }}</text>
+                  </g>
+                </g>
+                <!-- Forecast -->
+                <path *ngIf="showComparaison && forecastPoints.length" [attr.d]="forecastLinePath" fill="none" stroke="url(#grad-forecast)" stroke-width="2" stroke-dasharray="8 4" opacity="0.7"/>
+                <!-- Area & Line -->
+                <path [attr.d]="areaPath" fill="url(#grad-area)"/>
+                <path [attr.d]="linePath" fill="none" stroke="url(#grad-line)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- Data points -->
+                <g *ngFor="let p of chartPoints">
+                  <circle *ngIf="p.value>0" [attr.cx]="p.x" [attr.cy]="p.y" r="4" [attr.fill]="isAboveThreshold(p.value) ? '#ef4444' : '#6366f1'" stroke="rgba(255,255,255,0.8)" stroke-width="2" (mouseenter)="hoveredPoint=p" (mouseleave)="hoveredPoint=null" class="chart-dot"/>
+                </g>
+                <!-- Tooltip -->
+                <g *ngIf="hoveredPoint">
+                  <rect [attr.x]="hoveredPoint.x-44" [attr.y]="hoveredPoint.y-48" width="88" height="34" rx="8" fill="#1e1e2e" stroke="rgba(99,102,241,0.4)" stroke-width="1"/>
+                  <text [attr.x]="hoveredPoint.x" [attr.y]="hoveredPoint.y-34" text-anchor="middle" class="chart-tip-lbl">{{ hoveredPoint.label }}</text>
+                  <text [attr.x]="hoveredPoint.x" [attr.y]="hoveredPoint.y-19" text-anchor="middle" class="chart-tip-val">{{ hoveredPoint.value }}</text>
+                </g>
+                <!-- X-axis labels -->
+                <text *ngFor="let p of visibleXLabels" [attr.x]="p.x" [attr.y]="CHART_H+26" text-anchor="middle" class="chart-ax-lbl">{{ p.label }}</text>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Répartition -->
+          <div class="glass">
+            <div class="chart-hd">
+              <div>
+                <h3 class="chart-title">Répartition par vecteur</h3>
+                <p class="chart-sub">Part de chaque énergie</p>
+              </div>
+            </div>
+            <div class="repartition-list" *ngIf="mesures.length>0">
+              <div class="repartition-row" *ngFor="let en of energies; let i=index">
+                <span class="repartition-name">
+                  {{ getEnergieIcon(en.idEnergie) }} {{ en.nom }}
+                  <span style="font-size:10px;color:var(--text-3)">{{ en.unite }}</span>
+                </span>
+                <div class="rep-bar-track">
+                  <div class="rep-bar-fill" [class]="'rfill--'+(i+1)" [style.width.%]="getEnergiePct(en.idEnergie)"></div>
+                </div>
+                <span class="rep-pct">{{ getEnergiePct(en.idEnergie) }}%</span>
+              </div>
+            </div>
+            <div class="chart-empty" *ngIf="!mesures.length">
+              <p>Aucune mesure enregistrée.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Energy nav cards -->
+        <div class="energy-cards" *ngIf="energies.length">
+          <a *ngFor="let en of energies" class="enc"
+             [class.enc--e]="getEnergieRoute(en)==='electricity'"
+             [class.enc--g]="getEnergieRoute(en)==='gas'"
+             [class.enc--w]="getEnergieRoute(en)==='water'"
+             [routerLink]="['/energy', getEnergieRoute(en)]">
+            <div class="enc-icon">{{ getEnergieIcon(en.idEnergie) }}</div>
+            <div class="enc-body">
+              <p class="enc-title">{{ en.nom }}</p>
+              <p class="enc-value">{{ getEnergieTotal(en.idEnergie) }} <span class="enc-unit">{{ en.unite }}</span></p>
+              <p class="enc-sub">{{ getEnergiePct(en.idEnergie) }}% de la consommation totale</p>
+            </div>
+            <div class="enc-arrow">→</div>
+          </a>
+        </div>
+
+        <!-- Bottom row -->
+        <div class="bottom-row">
+          <div class="glass">
+            <div class="card-hd">
+              <div><h3 class="card-title">Alertes récentes</h3><p class="card-sub">Seuils dépassés ou anomalies</p></div>
+              <button class="card-link" (click)="activeTab='alertes'">Tout voir →</button>
+            </div>
+            <div class="alert-list" *ngIf="alertes.length>0">
+              <div class="alert-row" *ngFor="let a of alertes.slice(0,5)" [class.alert-row--crit]="a.severite==='Critique'">
+                <span class="alert-dot" [class.alert-dot--red]="a.severite==='Critique'" [class.alert-dot--amber]="a.severite==='Haute'"></span>
+                <div class="alert-content">
+                  <span class="alert-type">{{ a.type }}</span>
+                  <span class="alert-msg">{{ a.message }}</span>
+                </div>
+                <span class="alert-status" [class.alert-status--red]="!a.traite">{{ a.traite ? 'TRAITÉE' : 'ACTIVE' }}</span>
+              </div>
+            </div>
+            <div class="chart-empty" *ngIf="!alertes.length">
+              <svg width="24" height="24" fill="none" viewBox="0 0 24 24" style="opacity:0.15"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <p>✓ Aucune alerte active</p>
+            </div>
+          </div>
+
+          <div class="glass">
+            <div class="card-hd"><h3 class="card-title">Indicateurs clés</h3></div>
+            <div class="stats-grid2" *ngIf="mesures.length>0">
+              <div class="stat2"><span class="stat2-lbl">Moyenne</span><span class="stat2-val stat2-val--t">{{ moyenneMesures }}</span></div>
+              <div class="stat2"><span class="stat2-lbl">Maximum</span><span class="stat2-val stat2-val--r">{{ maxMesure }}</span></div>
+              <div class="stat2"><span class="stat2-lbl">Minimum</span><span class="stat2-val stat2-val--g">{{ minMesure }}</span></div>
+              <div class="stat2"><span class="stat2-lbl">Coût total</span><span class="stat2-val stat2-val--a">{{ coutTotal }}</span></div>
+            </div>
+            <div class="chart-empty" *ngIf="!mesures.length"><p>Aucune donnée.</p></div>
+            <div class="quick-access">
+              <span class="qa-lbl">Accès rapide</span>
+              <div class="qa-btns">
+                <button class="qa-btn" (click)="activeTab='benchmarking'">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                  <span>Compar.</span>
+                </button>
+                <button class="qa-btn" (click)="activeTab='previsions'">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4l3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                  <span>Prévis.</span>
+                </button>
+                <button class="qa-btn" (click)="activeTab='heatmap'">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 9h18M3 15h18M9 3v18" stroke="currentColor" stroke-width="1.8"/></svg>
+                  <span>Heat</span>
+                </button>
+                <button class="qa-btn" (click)="activeTab='rapports'">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" stroke-width="1.8"/></svg>
+                  <span>Rapports</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ ÉQUIPEMENTS ══ -->
+      <section *ngIf="activeTab==='equipements'" class="page-fade">
+        <div class="page-hd">
+          <div><h1 class="page-title">Gestion des équipements</h1><p class="page-sub">{{ filteredEquipements.length }} équipement(s) · {{ equipementsActifs }} actif(s)</p></div>
+          <div class="page-acts">
+            <button class="btn-ghost" (click)="exportEquipementsCSV()" [disabled]="!equipements.length">Export CSV</button>
+            <button class="btn-primary" (click)="openAddEquipement()" *ngIf="canEdit">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+              Ajouter
+            </button>
+          </div>
+        </div>
+        <div class="info-banner info-banner--blue" *ngIf="!canEdit">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          Mode consultation — la modification est réservée au responsable énergie.
+        </div>
+        <div class="stats-strip" *ngIf="equipements.length>0">
+          <div class="stat-chip stat-chip--success"><span class="stat-v">{{ equipementsActifs }}</span><span class="stat-l">Actifs</span></div>
+          <div class="stat-chip stat-chip--warn"><span class="stat-v">{{ equipementsMaintenance }}</span><span class="stat-l">Maintenance</span></div>
+          <div class="stat-chip stat-chip--danger"><span class="stat-v">{{ equipementsInactifs }}</span><span class="stat-l">Inactifs</span></div>
+          <div class="stat-chip"><span class="stat-v">{{ puissanceTotale }} kW</span><span class="stat-l">Puissance totale</span></div>
+        </div>
+        <div class="toolbar" *ngIf="equipements.length>0">
+          <div class="search-box">
+            <svg fill="none" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <input [(ngModel)]="searchEquip" (ngModelChange)="equipPage=1" placeholder="Nom, type, localisation…"/>
+            <button class="search-clear" *ngIf="searchEquip" (click)="searchEquip='';equipPage=1">✕</button>
+          </div>
+          <select class="filter-sel" [(ngModel)]="filterEquipType" (ngModelChange)="equipPage=1">
+            <option value="">Tous types</option>
+            <option *ngFor="let t of equipementTypes" [value]="t">{{ t }}</option>
+          </select>
+          <select class="filter-sel" [(ngModel)]="filterEquipStatut" (ngModelChange)="equipPage=1">
+            <option value="">Tous statuts</option>
+            <option value="Actif">Actif</option>
+            <option value="Maintenance">Maintenance</option>
+            <option value="Inactif">Inactif</option>
+          </select>
+        </div>
+        <div class="onboarding-banner" *ngIf="!equipements.length">
+          <div class="onboarding-ico">⚙️</div>
+          <div class="onboarding-text"><strong>Aucun équipement enregistré</strong><p>Ajoutez vos équipements pour suivre leur consommation individuelle.</p></div>
+          <button class="btn-primary" (click)="openAddEquipement()" *ngIf="canEdit">Ajouter →</button>
+        </div>
+        <div class="equip-grid" *ngIf="equipements.length>0">
+          <div class="equip-card" *ngFor="let e of pagedEquipements">
+            <div class="equip-card-hd">
+              <div class="equip-ico">{{ getEquipIcon(e.typeEquipement) }}</div>
+              <div class="equip-info" style="flex:1;min-width:0"><p class="equip-name">{{ e.nom }}</p><p class="equip-type">{{ e.typeEquipement }}</p></div>
+              <span class="tag" [class]="getEquipStatutClass(e.statut)">{{ e.statut || 'Actif' }}</span>
+            </div>
+            <div class="equip-details">
+              <div class="equip-detail-row"><span class="equip-detail-lbl">Puissance</span><span class="equip-detail-val">{{ e.puissance ?? '—' }} kW</span></div>
+              <div class="equip-detail-row"><span class="equip-detail-lbl">Localisation</span><span class="equip-detail-val">{{ getEquipLocalisation(e) }}</span></div>
+              <div class="equip-detail-row"><span class="equip-detail-lbl">Âge</span><span class="equip-detail-val">{{ getEquipAgeAns(e) }}</span></div>
+              <div class="equip-detail-row"><span class="equip-detail-lbl">Mesures</span><span class="equip-detail-val">{{ getMesuresForEquip(e) }}</span></div>
+            </div>
+            <div class="equip-acts" *ngIf="canEdit">
+              <button class="btn-ghost btn-sm" (click)="openEditEquipement(e)">Modifier</button>
+              <button class="btn-ghost btn-sm" (click)="toggleEquipStatut(e)">{{ (e.statut||'Actif')==='Actif' ? 'Désactiver' : 'Activer' }}</button>
+            </div>
+            <div class="equip-acts" *ngIf="!canEdit">
+              <span class="tag tag--ghost" style="font-size:10px">🔒 Consultation</span>
+            </div>
+          </div>
+        </div>
+        <div class="pagination" *ngIf="equipTotalPages>1">
+          <button class="pg-btn" [disabled]="equipPage===1" (click)="equipPage=equipPage-1">‹</button>
+          <button class="pg-btn" *ngFor="let p of equipPages" [class.pg-act]="p===equipPage" (click)="equipPage=p">{{ p }}</button>
+          <button class="pg-btn" [disabled]="equipPage===equipTotalPages" (click)="equipPage=equipPage+1">›</button>
+          <span class="pg-info">{{ filteredEquipements.length }} total</span>
+        </div>
+      </section>
+
+      <!-- ══ ALERTES ══ -->
+      <section *ngIf="activeTab==='alertes'" class="page-fade">
+        <div class="page-hd">
+          <div><h1 class="page-title">Alertes énergétiques</h1><p class="page-sub">{{ alertes.length }} alerte(s) · {{ alertesNonTraitees }} non traitée(s)</p></div>
+          <div class="page-acts">
+            <button class="btn-ghost" *ngIf="canEdit" (click)="genererAlertesAuto()">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Actualiser
+            </button>
+            <button class="btn-ghost" *ngIf="alertesNonTraitees>0&&canEdit" (click)="traiterToutesAlertes()">Tout traiter</button>
+            <button class="btn-primary" *ngIf="canEdit" (click)="openAlerteModal()">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+              Ajouter
+            </button>
+          </div>
+        </div>
+        <div class="info-banner info-banner--blue" *ngIf="!canEdit">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          Mode consultation — traiter les alertes est réservé au responsable énergie.
+        </div>
+        <div class="info-banner info-banner--amber" *ngIf="alertesAutoGenerees>0">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.8"/></svg>
+          <strong>{{ alertesAutoGenerees }} alerte(s) automatique(s)</strong> générée(s) par dépassement de seuils
+        </div>
+        <div class="stats-strip" *ngIf="alertes.length>0">
+          <div class="stat-chip stat-chip--danger"><span class="stat-v">{{ alertesCritiques }}</span><span class="stat-l">Critiques</span></div>
+          <div class="stat-chip stat-chip--warn"><span class="stat-v">{{ alertesHautes }}</span><span class="stat-l">Hautes</span></div>
+          <div class="stat-chip"><span class="stat-v">{{ alertesNonTraitees }}</span><span class="stat-l">Non traitées</span></div>
+          <div class="stat-chip stat-chip--success"><span class="stat-v">{{ alertes.length-alertesNonTraitees }}</span><span class="stat-l">Traitées</span></div>
+        </div>
+        <div class="toolbar" *ngIf="alertes.length>0">
+          <div class="search-box">
+            <svg fill="none" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <input [(ngModel)]="searchAlerte" placeholder="Message, type…"/>
+            <button class="search-clear" *ngIf="searchAlerte" (click)="searchAlerte=''">✕</button>
+          </div>
+          <select class="filter-sel" [(ngModel)]="filterAlertType">
+            <option value="">Tous types</option>
+            <option *ngFor="let t of alertTypes" [value]="t">{{ t }}</option>
+          </select>
+          <select class="filter-sel" [(ngModel)]="filterAlertSeverite">
+            <option value="">Toutes sévérités</option>
+            <option value="Critique">Critique</option>
+            <option value="Haute">Haute</option>
+            <option value="Normale">Normale</option>
+          </select>
+          <select class="filter-sel" [(ngModel)]="filterAlertStatut">
+            <option value="">Toutes</option>
+            <option value="active">Actives</option>
+            <option value="traitee">Traitées</option>
+          </select>
+        </div>
+        <div class="onboarding-banner" *ngIf="!alertes.length">
+          <div class="onboarding-ico">🔔</div>
+          <div class="onboarding-text"><strong>Aucune alerte</strong><p>Les alertes se génèrent automatiquement lors du dépassement de seuils.</p></div>
+          <button class="btn-primary" (click)="openAlerteModal()" *ngIf="canEdit">Créer →</button>
+        </div>
+        <div class="glass" *ngIf="alertes.length>0">
+          <div class="table-wrap">
+            <table class="data-tbl">
+              <thead><tr><th>Sévérité</th><th>Type</th><th>Message</th><th>Seuil</th><th>Date</th><th>Source</th><th>Statut</th><th *ngIf="canEdit">Action</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let a of filteredAlertes" [class.row-crit]="a.severite==='Critique'" [class.row-high]="a.severite==='Haute'">
+                  <td><div class="sev-row"><span class="sev-dot" [class.sev-red]="a.severite==='Critique'" [class.sev-amber]="a.severite==='Haute'" [class.sev-green]="a.severite==='Normale'"></span>{{ a.severite }}</div></td>
+                  <td><span class="tag tag--warn">{{ a.type }}</span></td>
+                  <td style="max-width:240px;font-size:12px">{{ a.message }}</td>
+                  <td class="td-dim td-mono">{{ a.seuil }}</td>
+                  <td class="td-dim td-mono">{{ a.dateCreation | date:'dd/MM · HH:mm' }}</td>
+                  <td><span class="tag" [class.tag--blue]="a.sourceAuto" [class.tag--ghost]="!a.sourceAuto">{{ a.sourceAuto ? '⚡ Auto' : '✍ Manuel' }}</span></td>
+                  <td><span class="tag" [class.tag--danger]="!a.traite" [class.tag--success]="a.traite">{{ a.traite ? '✓ Traitée' : 'Active' }}</span></td>
+                  <td *ngIf="canEdit">
+                    <div style="display:flex;gap:4px">
+                      <button class="btn-treat" (click)="traiterAlerte(a)" *ngIf="!a.traite">
+                        <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        Traiter
+                      </button>
+                      <button class="btn-danger-sm" (click)="deleteAlerte(a)">🗑</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr *ngIf="!filteredAlertes.length"><td [attr.colspan]="canEdit?8:7" class="empty-td">✓ Aucune alerte correspondante</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ RAPPORTS ══ -->
+      <section *ngIf="activeTab==='rapports'" class="page-fade">
+        <div class="page-hd">
+          <div><h1 class="page-title">Rapports énergétiques</h1><p class="page-sub">{{ totalMesures }} mesures disponibles</p></div>
+          <div class="page-acts"><button class="btn-primary" (click)="genererRapport()" [disabled]="!mesures.length">Générer un rapport</button></div>
+        </div>
+        <div class="onboarding-banner" *ngIf="!mesures.length">
+          <div class="onboarding-ico">📄</div>
+          <div class="onboarding-text"><strong>Aucune donnée</strong><p>Saisissez des mesures pour générer vos rapports.</p></div>
+        </div>
+        <div class="rapport-grid" *ngIf="mesures.length>0">
+          <div class="rapport-card" (click)="telechargerRapport('mensuel')">
+            <div class="rapport-ico"><svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18" stroke="currentColor" stroke-width="1.8"/><path d="M7 16l4-4 4 4 4-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+            <p class="rapport-title">Rapport mensuel</p>
+            <p class="rapport-desc">Bilan complet des consommations du mois.</p>
+            <p class="rapport-meta">TXT · {{ totalMesures }} mesures</p>
+            <button class="btn-ghost btn-sm" style="align-self:flex-start">Télécharger</button>
+          </div>
+          <div class="rapport-card" (click)="telechargerRapport('trimestriel')">
+            <div class="rapport-ico"><svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="1.8"/></svg></div>
+            <p class="rapport-title">Rapport trimestriel</p>
+            <p class="rapport-desc">Analyse des tendances sur 3 mois.</p>
+            <p class="rapport-meta">TXT · T{{ trimestre }} {{ currentTime | date:'yyyy' }}</p>
+            <button class="btn-ghost btn-sm" style="align-self:flex-start">Télécharger</button>
+          </div>
+          <div class="rapport-card" (click)="telechargerRapport('alertes')">
+            <div class="rapport-ico"><svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" stroke-width="1.8"/></svg></div>
+            <p class="rapport-title">Rapport d'alertes</p>
+            <p class="rapport-desc">Historique complet des alertes.</p>
+            <p class="rapport-meta">CSV · {{ alertes.length }} alertes</p>
+            <button class="btn-ghost btn-sm" style="align-self:flex-start">Télécharger</button>
+          </div>
+          <div class="rapport-card" (click)="exportCSV()">
+            <div class="rapport-ico rapport-ico--teal"><svg width="22" height="22" fill="none" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 9h18M3 15h18M9 3v18" stroke="currentColor" stroke-width="1.8"/></svg></div>
+            <p class="rapport-title">Export brut CSV</p>
+            <p class="rapport-desc">Toutes les mesures pour analyse externe.</p>
+            <p class="rapport-meta">CSV · {{ totalMesures }} lignes</p>
+            <button class="btn-ghost btn-sm" style="align-self:flex-start">Télécharger</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ BENCHMARKING ══ -->
+      <section *ngIf="activeTab==='benchmarking'" class="page-fade">
+        <div class="page-hd">
+          <div><h1 class="page-title">Comparatif de consommation</h1><p class="page-sub">Mois courant vs précédent · {{ mesures.length }} mesures</p></div>
+          <span class="new-feat-badge">ANALYSE</span>
+        </div>
+        <div class="onboarding-banner" *ngIf="!mesures.length">
+          <div class="onboarding-ico">📊</div>
+          <div class="onboarding-text"><strong>Aucune donnée</strong><p>Le comparatif sera disponible dès que vous aurez des mesures.</p></div>
+        </div>
+        <div class="bench-grid" *ngIf="mesures.length>0">
+          <div class="bench-card" *ngFor="let b of benchmarkData">
+            <div class="bench-hd">
+              <div><p class="bench-ttl">{{ b.energie }}</p><p class="bench-sub">{{ b.unite }} · mois courant vs précédent</p></div>
+              <span class="tag" [class.tag--success]="b.position==='better'" [class.tag--ghost]="b.position==='same'" [class.tag--danger]="b.position==='worse'" *ngIf="b.hasData">
+                {{ b.position==='better' ? '↓ Baisse' : b.position==='same' ? '→ Stable' : '↑ Hausse' }}
+              </span>
+              <span class="tag tag--ghost" *ngIf="!b.hasData">Pas de données</span>
+            </div>
+            <div class="bench-vals" *ngIf="b.hasData">
+              <div class="bench-col"><span class="bench-lbl">Ce mois</span><span class="bench-val bench-val--you">{{ b.moisActuel }} {{ b.unite }}</span></div>
+              <div class="bench-col"><span class="bench-lbl">Mois préc.</span><span class="bench-val">{{ b.moisPrecedent>0 ? b.moisPrecedent+' '+b.unite : '—' }}</span></div>
+              <div class="bench-col"><span class="bench-lbl">Variation</span><span class="bench-val" [style.color]="b.variation<0?'var(--green-text)':b.variation>0?'var(--red-text)':'inherit'">{{ b.moisPrecedent>0&&b.moisActuel>0 ? (b.variation>0?'+':'')+b.variation+'%' : '—' }}</span></div>
+            </div>
+            <div class="bench-insight">
+              <svg width="12" height="12" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              {{ b.insight }}
+            </div>
+          </div>
+        </div>
+        <div class="glass" *ngIf="hasRankTimelineData" style="margin-top:14px">
+          <div class="card-hd"><div><h3 class="card-title">Historique mensuel</h3><p class="card-sub">Efficacité relative — 100% = meilleur mois</p></div></div>
+          <div style="padding:0 22px 18px">
+            <div class="rank-tl">
+              <div class="rank-month" *ngFor="let r of rankTimeline">
+                <div class="rank-bw"><div class="rank-bar" [style.height.%]="r.pct" [class.rank-bar--good]="r.pct>=70" [class.rank-bar--mid]="r.pct>=40&&r.pct<70" [class.rank-bar--bad]="r.pct>0&&r.pct<40"></div></div>
+                <span class="rank-lbl">{{ r.label }}</span>
+                <span class="rank-pct" [style.color]="r.pct===0?'var(--text-3)':'inherit'">{{ r.pct===0 ? '—' : r.pct+'%' }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ PRÉVISIONS IA ══ -->
+      <section *ngIf="activeTab==='previsions'" class="page-fade">
+        <div class="page-hd">
+          <div>
+            <h1 class="page-title">Prévisions IA</h1>
+            <p class="page-sub" *ngIf="previsionMoisProchain.hasEnoughData">Régression linéaire · {{ mesures.length }} mesures · Fiabilité : {{ previsionMoisProchain.fiabilite }}%</p>
+            <p class="page-sub" *ngIf="!previsionMoisProchain.hasEnoughData">Données insuffisantes — minimum 3 mois requis</p>
+          </div>
+          <div class="page-acts">
+            <span class="new-feat-badge">IA</span>
+            <button class="btn-ghost" (click)="recalculatePrevisions()" *ngIf="previsionMoisProchain.hasEnoughData">Recalculer</button>
+          </div>
+        </div>
+        <div class="onboarding-banner" *ngIf="!previsionMoisProchain.hasEnoughData">
+          <div class="onboarding-ico">🔮</div>
+          <div class="onboarding-text"><strong>Prévisions non disponibles</strong><p>Minimum <strong>3 mois</strong> de données requis.</p></div>
+        </div>
+        <div class="glass" style="margin-bottom:14px">
+          <div class="card-hd"><div><h3 class="card-title">Analyse IA</h3><p class="card-sub">{{ previsionMoisProchain.hasEnoughData ? 'Basée sur vos données réelles' : 'Informations de progression' }}</p></div></div>
+          <div style="padding:0 22px 20px">
+            <div class="pr-reco" *ngFor="let r of previsionRecos">
+              <div class="pr-reco-ico" [class.pr-ico--warn]="r.urgence==='haute'" [class.pr-ico--info]="r.urgence==='normale'">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" *ngIf="r.urgence==='haute'"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.8"/></svg>
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" *ngIf="r.urgence==='normale'"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              </div>
+              <div class="pr-reco-content"><div class="pr-title">{{ r.titre }}</div><div class="pr-desc">{{ r.description }}</div></div>
+              <div class="pr-econ" *ngIf="r.economie>0"><span class="pr-econ-val">{{ r.economie }}</span><span class="pr-econ-lbl">DT/mois</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="kpi-grid" *ngIf="previsionMoisProchain.hasEnoughData">
+          <div class="kpi kpi--green">
+            <div class="kpi-top"><div class="kpi-icon kpi-icon--green"><svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div></div>
+            <span class="kpi-val">{{ previsionMoisProchain.elec }}</span>
+            <span class="kpi-lbl">Élec. prévue (kWh)</span>
+            <div class="kpi-trend" [class.kpi-trend--up]="previsionMoisProchain.elecTrend==='up'" [class.kpi-trend--down]="previsionMoisProchain.elecTrend==='down'" [class.kpi-trend--flat]="previsionMoisProchain.elecTrend==='flat'">
+              <span *ngIf="previsionMoisProchain.elecTrend==='up'">↑ +{{ previsionMoisProchain.elecVar }}% attendu</span>
+              <span *ngIf="previsionMoisProchain.elecTrend==='down'">↓ -{{ previsionMoisProchain.elecVar }}% attendu</span>
+              <span *ngIf="previsionMoisProchain.elecTrend==='flat'">→ Stable</span>
+            </div>
+          </div>
+          <div class="kpi kpi--green">
+            <div class="kpi-top"><div class="kpi-icon kpi-icon--teal"></div></div>
+            <span class="kpi-val">{{ previsionMoisProchain.eau }}</span>
+            <span class="kpi-lbl">Eau prévue (m³)</span>
+            <div class="kpi-trend kpi-trend--flat">Projection linéaire</div>
+          </div>
+          <div class="kpi kpi--amber">
+            <div class="kpi-top"><div class="kpi-icon kpi-icon--amber"></div></div>
+            <span class="kpi-val">{{ previsionMoisProchain.gazoil }}</span>
+            <span class="kpi-lbl">Gazoil prévu (L)</span>
+            <div class="kpi-trend kpi-trend--flat">Projection linéaire</div>
+          </div>
+          <div class="kpi kpi--accent">
+            <div class="kpi-top"><div class="kpi-icon kpi-icon--accent"><svg width="18" height="18" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4l3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div></div>
+            <span class="kpi-val kpi-val--purple">{{ previsionMoisProchain.fiabilite }}%</span>
+            <span class="kpi-lbl">Fiabilité modèle</span>
+            <div class="kpi-trend kpi-trend--flat">R² calculé sur données réelles</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ CARTE THERMIQUE ══ -->
+      <section *ngIf="activeTab==='heatmap'" class="page-fade">
+        <div class="page-hd">
+          <div><h1 class="page-title">Carte thermique</h1><p class="page-sub">Heure par heure · {{ heatmapHoursWithData }} plages mesurées</p></div>
+          <div class="page-acts">
+            <span class="new-feat-badge">NOUVEAU</span>
+            <select class="filter-sel" [(ngModel)]="heatmapEnergie" (ngModelChange)="onHeatmapEnergieChange()">
+              <option *ngFor="let en of energies" [value]="en.idEnergie">{{ en.nom }}</option>
+              <option *ngIf="!energies.length" value="1">Électricité</option>
+            </select>
+          </div>
+        </div>
+        <div class="onboarding-banner" *ngIf="!heatmapHasDayData">
+          <div class="onboarding-ico">🌡️</div>
+          <div class="onboarding-text"><strong>Aucune donnée sur les 7 derniers jours</strong><p>Les cellules vides correspondent aux heures sans mesure.</p></div>
+        </div>
+        <div class="glass" *ngIf="heatmapHasDayData">
+          <div class="card-hd">
+            <div><h3 class="card-title">Intensité — {{ getEnergieNom(+heatmapEnergie) }}</h3><p class="card-sub">7 derniers jours · {{ heatmapHoursWithData }} plages réelles</p></div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-3)">
+              <span>Faible</span><div class="hm-legend"></div><span>Fort</span>
+            </div>
+          </div>
+          <div class="hm-wrap">
+            <div class="hm-day-labels"><div class="hm-day-lbl" *ngFor="let d of heatmapDays">{{ d }}</div></div>
+            <div class="hm-grid">
+              <div class="hm-hour-labels"><span *ngFor="let h of heatmapHourLabels">{{ h }}</span></div>
+              <div class="hm-cells">
+                <ng-container *ngFor="let row of heatmapData; let di=index">
+                  <div class="hm-cell" *ngFor="let val of row; let hi=index"
+                    [style.background]="getHeatColor(val)"
+                    [title]="(val===0 ? heatmapDays[di]+' '+(hi<10?'0'+hi:hi)+'h : Aucune mesure' : heatmapDays[di]+' '+(hi<10?'0'+hi:hi)+'h : '+val+' '+getEnergieUnite(+heatmapEnergie))"
+                    (mouseenter)="heatmapHovered={day:di,hour:hi,val:val}"
+                    (mouseleave)="heatmapHovered=null">
+                  </div>
+                </ng-container>
+              </div>
+            </div>
+          </div>
+          <div class="hm-summary">
+            <div class="hm-sum-card hm-sum-card--peak">
+              <div class="hm-sum-ico">🔴</div>
+              <div><p class="hm-sum-title">Heures de pointe</p><p class="hm-sum-val">08h–12h · 14h–18h</p><p class="hm-sum-sub" *ngIf="heatmapPeakPct>0">+{{ heatmapPeakPct }}% vs heures creuses</p></div>
+            </div>
+            <div class="hm-sum-card hm-sum-card--offpeak">
+              <div class="hm-sum-ico">🟢</div>
+              <div><p class="hm-sum-title">Heures creuses</p><p class="hm-sum-val">22h–06h</p><p class="hm-sum-sub">Tarif réduit recommandé</p></div>
+            </div>
+            <div class="hm-sum-card">
+              <div class="hm-sum-ico">💡</div>
+              <div><p class="hm-sum-title">Potentiel d'économie</p><p class="hm-sum-val" *ngIf="heatmapEconomy>0">{{ heatmapEconomy }} DT/mois</p><p class="hm-sum-val" *ngIf="heatmapEconomy===0">—</p><p class="hm-sum-sub">En décalant 20% vers heures creuses</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     MODALS
+══════════════════════════════════════════════════════════ -->
+
+<!-- Modal Mesure -->
+<div class="modal-overlay" *ngIf="showMesureModal&&canEdit" (click)="showMesureModal=false">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <div class="modal-hd">
+      <div><h3 class="modal-title">Saisir une mesure</h3><p class="modal-sub">Enregistrez une nouvelle valeur énergétique</p></div>
+      <button class="modal-close" (click)="showMesureModal=false">✕</button>
+    </div>
+    <div class="success-flash" *ngIf="mesureSaved"><svg width="15" height="15" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Mesure enregistrée !</div>
+    <form [formGroup]="mesureForm" (ngSubmit)="saveMesure()" class="modal-body">
+      <div class="form-grid-2">
+        <div class="form-field"><label>Valeur <span class="req">*</span></label><input type="number" formControlName="valeur" placeholder="Ex : 125.5" step="0.1"/><span class="field-err" *ngIf="mesureForm.get('valeur')?.invalid&&mesureForm.get('valeur')?.touched">Valeur requise (>= 0)</span></div>
+        <div class="form-field"><label>Date & heure <span class="req">*</span></label><input type="datetime-local" formControlName="dateMesure"/></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-field"><label>Énergie <span class="req">*</span></label><select formControlName="energieId"><option value="">— Sélectionner —</option><option *ngFor="let en of energies" [value]="en.idEnergie">{{ en.nom }} ({{ en.unite }})</option></select></div>
+        <div class="form-field"><label>Source <span class="req">*</span></label><select formControlName="sourceDonnee"><option value="Saisie manuelle">Saisie manuelle</option><option value="Capteur">Capteur automatique</option><option value="Import Excel">Import fichier</option></select></div>
+      </div>
+      <div class="form-field"><label>Équipement <span class="opt">(optionnel)</span></label><select formControlName="equipementId"><option value="">— Aucun —</option><option *ngFor="let e of equipements" [value]="e.idEquipement">{{ e.nom }}</option></select></div>
+      <div class="form-field"><label>Commentaire <span class="opt">(optionnel)</span></label><textarea formControlName="commentaire" placeholder="Contexte de la mesure…" rows="2"></textarea></div>
+      <div class="threshold-alert" *ngIf="+mesureForm.get('valeur')?.value>alertThreshold">⚠ Valeur supérieure au seuil d'alerte ({{ alertThreshold }})</div>
+      <div class="modal-ft">
+        <button type="button" class="btn-ghost" (click)="resetMesureForm()">Réinitialiser</button>
+        <button type="button" class="btn-ghost" (click)="showMesureModal=false">Annuler</button>
+        <button type="submit" class="btn-primary" [disabled]="mesureSaving||mesureForm.invalid"><span class="btn-spin" *ngIf="mesureSaving"></span>{{ mesureSaving ? 'Enregistrement…' : 'Enregistrer' }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Équipement -->
+<div class="modal-overlay" *ngIf="showEquipementModal&&canEdit" (click)="showEquipementModal=false">
+  <div class="modal modal--lg" (click)="$event.stopPropagation()">
+    <div class="modal-hd">
+      <div><h3 class="modal-title">{{ editingEquipement ? 'Modifier l\'équipement' : 'Nouvel équipement' }}</h3><p class="modal-sub">{{ editingEquipement ? 'Mettez à jour les informations' : 'Ajoutez un équipement au parc' }}</p></div>
+      <button class="modal-close" (click)="showEquipementModal=false">✕</button>
+    </div>
+    <div class="success-flash" *ngIf="equipementSaved"><svg width="15" height="15" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ editingEquipement ? 'Équipement modifié !' : 'Équipement ajouté !' }}</div>
+    <form [formGroup]="equipementForm" (ngSubmit)="saveEquipement()" class="modal-body">
+      <div class="form-grid-2">
+        <div class="form-field"><label>Nom <span class="req">*</span></label><input type="text" formControlName="nom" placeholder="Ex : Compresseur C1"/></div>
+        <div class="form-field"><label>Type <span class="req">*</span></label><select formControlName="typeEquipement"><option value="">— Sélectionner —</option><option value="Compresseur">Compresseur</option><option value="Pompe">Pompe</option><option value="CVC">CVC</option><option value="Chaudière">Chaudière</option><option value="Éclairage">Éclairage</option><option value="Générateur">Générateur</option><option value="Moteur">Moteur</option><option value="Convoyeur">Convoyeur</option><option value="Machine textile">Machine textile</option><option value="Machine packaging">Machine packaging</option><option value="Autre">Autre</option></select></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-field"><label>Statut <span class="req">*</span></label><select formControlName="statut"><option value="Actif">Actif</option><option value="Maintenance">Maintenance</option><option value="Inactif">Inactif</option></select></div>
+        <div class="form-field"><label>Puissance (kW) <span class="req">*</span></label><input type="number" formControlName="puissance" placeholder="Ex : 15" min="0" step="0.1"/></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-field"><label>Localisation <span class="req">*</span></label><input type="text" formControlName="localisation" placeholder="Ex : Atelier A"/></div>
+        <div class="form-field"><label>Date mise en service <span class="req">*</span></label><input type="date" formControlName="dateInstallation"/></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-field"><label>Énergie <span class="opt">(optionnel)</span></label><select formControlName="energieId"><option value="">— Aucune —</option><option *ngFor="let en of energies" [value]="en.idEnergie">{{ en.nom }}</option></select></div>
+        <div class="form-field"><label>Zone <span class="opt">(optionnel)</span></label><select formControlName="zoneId"><option value="">— Aucune —</option><option *ngFor="let z of zones" [value]="z.idZone">{{ z.nom }}</option></select></div>
+      </div>
+      <div class="form-field"><label>Description <span class="opt">(optionnel)</span></label><textarea formControlName="description" placeholder="Notes…" rows="2"></textarea></div>
+      <div class="modal-ft">
+        <button type="button" class="btn-ghost" (click)="showEquipementModal=false">Annuler</button>
+        <button type="submit" class="btn-primary" [disabled]="equipementSaving||equipementForm.invalid"><span class="btn-spin" *ngIf="equipementSaving"></span>{{ equipementSaving ? 'Enregistrement…' : (editingEquipement ? 'Modifier' : 'Ajouter') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Alerte -->
+<div class="modal-overlay" *ngIf="showAlerteModal&&canEdit" (click)="showAlerteModal=false">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <div class="modal-hd">
+      <div><h3 class="modal-title">Créer une alerte</h3><p class="modal-sub">Alerte manuelle</p></div>
+      <button class="modal-close" (click)="showAlerteModal=false">✕</button>
+    </div>
+    <div class="success-flash" *ngIf="alerteSaved">Alerte créée !</div>
+    <form [formGroup]="alerteForm" (ngSubmit)="saveAlerte()" class="modal-body">
+      <div class="form-grid-2">
+        <div class="form-field"><label>Type <span class="req">*</span></label><select formControlName="type"><option value="Dépassement seuil">Dépassement seuil</option><option value="Anomalie détectée">Anomalie détectée</option><option value="Maintenance requise">Maintenance requise</option><option value="Consommation excessive">Consommation excessive</option><option value="Autre">Autre</option></select></div>
+        <div class="form-field"><label>Sévérité <span class="req">*</span></label><select formControlName="severite"><option value="Normale">Normale</option><option value="Haute">Haute</option><option value="Critique">Critique</option></select></div>
+      </div>
+      <div class="form-field"><label>Message <span class="req">*</span></label><textarea formControlName="message" placeholder="Décrivez l'alerte…" rows="3"></textarea></div>
+      <div class="form-grid-2">
+        <div class="form-field"><label>Seuil associé <span class="opt">(optionnel)</span></label><input type="text" formControlName="seuil" placeholder="Ex : 5000 kWh"/></div>
+        <div class="form-field"><label>Énergie <span class="opt">(optionnel)</span></label><select formControlName="energieId"><option value="">— Aucune —</option><option *ngFor="let en of energies" [value]="en.idEnergie">{{ en.nom }}</option></select></div>
+      </div>
+      <div class="modal-ft">
+        <button type="button" class="btn-ghost" (click)="showAlerteModal=false">Annuler</button>
+        <button type="submit" class="btn-primary" [disabled]="alerteSaving||alerteForm.invalid"><span class="btn-spin" *ngIf="alerteSaving"></span>{{ alerteSaving ? 'Création…' : 'Créer l\'alerte' }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     CHAT IA
+══════════════════════════════════════════════════════════ -->
+<div class="chat-panel" [class.chat-open]="showChat">
+  <div class="chat-top">
+    <div class="chat-id">
+      <div class="chat-avatar">🤖</div>
+      <div><p class="chat-name">Assistant Énergie IA</p><p class="chat-powered">Alimenté par Ollama</p></div>
+    </div>
+    <button class="chat-close" (click)="showChat=false">✕</button>
+  </div>
+  <div class="chat-ctx">
+    <span>Conso. mois: <strong>{{ coutMoisCourant>0 ? coutMoisCourant+' DT' : '—' }}</strong></span>
+    <span class="ctx-sep">·</span>
+    <span [class.ctx-danger]="alertesNonTraitees>0">Alertes: <strong>{{ alertesNonTraitees }}</strong></span>
+    <span class="ctx-sep">·</span>
+    <span>Mesures: <strong>{{ totalMesures }}</strong></span>
+    <span class="ctx-sep">·</span>
+    <span>Score: <strong>{{ efficiencyScore }}/100</strong></span>
+  </div>
+  <div class="chat-messages" #chatScrollRef>
+    <div *ngFor="let m of messages" class="msg" [class.msg--user]="m.role==='user'" [class.msg--bot]="m.role==='assistant'">
+      <div class="msg-avatar" [class.msg-avatar--user]="m.role==='user'">{{ m.role==='user' ? (currentUser?.nom?.charAt(0) | uppercase) : '🤖' }}</div>
+      <div class="msg-bubble"><p class="msg-text">{{ m.content }}</p><span class="msg-time">{{ m.time | date:'HH:mm' }}</span></div>
+    </div>
+    <div class="msg msg--bot" *ngIf="chatLoading">
+      <div class="msg-avatar">🤖</div>
+      <div class="msg-bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div>
+    </div>
+  </div>
+  <div class="chat-sugg">
+    <span class="sugg-lbl">Suggestions</span>
+    <div class="sugg-list">
+      <button class="sugg-btn" (click)="sendSuggestion('Comment réduire ma consommation ce mois ?')">Économies</button>
+      <button class="sugg-btn" (click)="sendSuggestion('Analyse mes anomalies en cours')">Anomalies</button>
+      <button class="sugg-btn" (click)="sendSuggestion('Quels équipements consomment le plus ?')">Énergivores</button>
+      <button class="sugg-btn" (click)="sendSuggestion('Interprète mon score efficacité')">Score</button>
+    </div>
+  </div>
+  <div class="chat-input-zone">
+    <div class="chat-input-row">
+      <textarea class="chat-ta" [(ngModel)]="chatInput" (keydown.enter)="onChatEnter($event)" placeholder="Posez votre question énergie…" rows="1" [disabled]="chatLoading"></textarea>
+      <button class="chat-send" (click)="sendChat()" [disabled]="chatLoading||!chatInput.trim()">
+        <div class="btn-spin" *ngIf="chatLoading"></div>
+        <svg *ngIf="!chatLoading" width="16" height="16" fill="none" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polygon points="22 2 15 22 11 13 2 9 22 2" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <p class="chat-hint"><code>Entrée</code> envoyer · <code>Shift+Entrée</code> nouvelle ligne</p>
+  </div>
+</div>
+<div class="chat-backdrop" *ngIf="showChat" (click)="showChat=false"></div>
+
+<!-- ══ TOASTS ══ -->
+<div class="toast-container">
+  <div class="toast" *ngFor="let t of toasts"
+    [class.toast--success]="t.type==='success'"
+    [class.toast--error]="t.type==='error'"
+    [class.toast--info]="t.type==='info'"
+    [class.toast--warn]="t.type==='warn'">
+    <span>{{ t.msg }}</span>
+    <button (click)="dismissToast(t.id)" class="toast-close">✕</button>
+  </div>
+</div>

@@ -1,0 +1,746 @@
+<div class="viewer-wrapper" [class.dark-mode]="isDarkMode">
+
+  <!-- ══ TOASTS ══════════════════════════════════════════════════════════ -->
+  <div class="toast-container">
+    <div class="toast" *ngFor="let t of toasts"
+         [class.toast-success]="t.type === 'success'"
+         [class.toast-error]="t.type === 'error'"
+         [class.toast-info]="t.type === 'info'"
+         [class.toast-warn]="t.type === 'warn'">
+      <span>{{ t.type === 'success' ? '✅' : t.type === 'error' ? '❌' : t.type === 'warn' ? '⚠️' : 'ℹ️' }}</span>
+      {{ t.msg }}
+      <button class="toast-close" (click)="dismissToast(t.id)">✕</button>
+    </div>
+  </div>
+
+  <!-- ══ LOADING ════════════════════════════════════════════════════════ -->
+  <div *ngIf="loading" class="loading-overlay">
+    <div class="loading-logo">⚡</div>
+    <div class="loading-label">WICMIC EnergyTracker</div>
+    <div class="loading-bar-bg"><div class="loading-bar"></div></div>
+    <div class="loading-sub">Chargement des données...</div>
+  </div>
+
+  <ng-container *ngIf="!loading">
+
+    <!-- ══ SIDEBAR ══════════════════════════════════════════════════════ -->
+    <aside class="sidebar" [class.collapsed]="navCollapsed">
+
+      <button class="collapse-btn" (click)="navCollapsed = !navCollapsed"
+              [title]="navCollapsed ? 'Ouvrir' : 'Réduire'">
+        {{ navCollapsed ? '▶' : '◀' }}
+      </button>
+
+      <!-- User -->
+      <div class="sidebar-user">
+        <div class="user-avatar">{{ currentUser?.nom?.charAt(0)?.toUpperCase() ?? '?' }}</div>
+        <div class="user-info" *ngIf="!navCollapsed">
+          <span class="user-name">{{ currentUser?.nom ?? '—' }}</span>
+          <span class="user-role">{{ currentUser?.role ?? 'Employé' }}</span>
+        </div>
+        <div class="online-dot" *ngIf="!navCollapsed" title="En ligne"></div>
+      </div>
+
+      <!-- Clock -->
+      <div class="sidebar-clock" *ngIf="!navCollapsed">
+        <div class="clock-time">{{ currentTime | date:'HH:mm:ss' }}</div>
+        <div class="clock-date">{{ currentTime | date:'EEEE d MMMM yyyy':'':'fr' }}</div>
+      </div>
+
+      <!-- Nav -->
+      <nav class="sidebar-nav">
+        <div class="nav-section-label" *ngIf="!navCollapsed">Navigation</div>
+
+        <a class="nav-item" [class.active]="activeTab === 'dashboard'" (click)="setTab('dashboard')" title="Tableau de bord">
+          <span class="nav-icon">🏠</span>
+          <span *ngIf="!navCollapsed">Tableau de bord</span>
+        </a>
+        <a class="nav-item" [class.active]="activeTab === 'alertes'" (click)="setTab('alertes')" title="Alertes">
+          <span class="nav-icon">🔔</span>
+          <span *ngIf="!navCollapsed">Alertes
+            <span class="badge-red" *ngIf="alertesActives > 0">{{ alertesActives }}</span>
+          </span>
+        </a>
+        <a class="nav-item" [class.active]="activeTab === 'statistiques'" (click)="setTab('statistiques')" title="Statistiques">
+          <span class="nav-icon">📊</span>
+          <span *ngIf="!navCollapsed">Statistiques</span>
+        </a>
+        <a class="nav-item" [class.active]="activeTab === 'equipements'" (click)="setTab('equipements')" title="Équipements">
+          <span class="nav-icon">⚙️</span>
+          <span *ngIf="!navCollapsed">Équipements</span>
+        </a>
+        <a class="nav-item" [class.active]="activeTab === 'sites'" (click)="setTab('sites')" title="Sites &amp; Zones">
+          <span class="nav-icon">🏭</span>
+          <span *ngIf="!navCollapsed">Sites &amp; Zones</span>
+        </a>
+        <a class="nav-item" [class.active]="activeTab === 'rapports'" (click)="setTab('rapports')" title="Rapports">
+          <span class="nav-icon">📄</span>
+          <span *ngIf="!navCollapsed">Rapports</span>
+        </a>
+
+        <div class="nav-section-label" *ngIf="!navCollapsed" style="margin-top: 8px;">Compte</div>
+        <a class="nav-item" [class.active]="activeTab === 'profil'" (click)="setTab('profil')" title="Mon profil">
+          <span class="nav-icon">👤</span>
+          <span *ngIf="!navCollapsed">Mon profil</span>
+        </a>
+      </nav>
+
+      <!-- Actions -->
+      <div class="sidebar-actions" *ngIf="!navCollapsed">
+        <button class="btn-dark-mode" (click)="toggleDarkMode()">
+          {{ isDarkMode ? '☀️' : '🌙' }} {{ isDarkMode ? 'Mode clair' : 'Mode sombre' }}
+        </button>
+        <button class="btn-export-csv" (click)="exportMesuresCSV()">📊 Export CSV</button>
+      </div>
+
+      <div class="sidebar-readonly" *ngIf="!navCollapsed">
+        🔒 <strong>Lecture seule</strong><br>
+        <span>Contactez votre Responsable pour toute modification.</span>
+      </div>
+
+      <button class="btn-logout" (click)="logout()" [title]="navCollapsed ? 'Déconnexion' : ''">
+        🚪 <span *ngIf="!navCollapsed">Déconnexion</span>
+      </button>
+    </aside>
+
+    <!-- ══ MAIN CONTENT ════════════════════════════════════════════════ -->
+    <main class="main-content">
+
+      <!-- ─────────────────── DASHBOARD ──────────────────────────────── -->
+      <div *ngIf="activeTab === 'dashboard'" class="tab-content">
+
+        <!-- Hero -->
+        <div class="hero-banner">
+          <div class="hero-left">
+            <span class="hero-emoji">👋</span>
+            <div>
+              <h2 class="hero-title">
+                Bonjour, <span class="hero-name">{{ currentUser?.nom ?? '—' }}</span> !
+              </h2>
+              <p class="hero-subtitle">
+                Suivi énergétique WICMIC — {{ currentTime | date:'EEEE d MMMM yyyy':'':'fr' }}
+              </p>
+            </div>
+          </div>
+          <div class="hero-right">
+            <div class="hero-time">{{ currentTime | date:'HH:mm:ss' }}</div>
+            <div class="hero-badge">👁 Consultation uniquement</div>
+          </div>
+        </div>
+
+        <!-- KPIs -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-icon">🏭</div>
+            <div class="kpi-label">Sites industriels</div>
+            <div class="kpi-value">{{ totalSites }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon">📍</div>
+            <div class="kpi-label">Zones actives</div>
+            <div class="kpi-value">{{ totalZones }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon">⚙️</div>
+            <div class="kpi-label">Équipements</div>
+            <div class="kpi-value">{{ equipements.length }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon">📏</div>
+            <div class="kpi-label">Mesures totales</div>
+            <div class="kpi-value">{{ totalMesures }}</div>
+            <!-- Sparkline -->
+            <svg class="kpi-sparkline" viewBox="0 0 120 36" preserveAspectRatio="none" *ngIf="lastMesuresValues.length > 1">
+              <path class="sparkline-area" [attr.d]="getSparklineArea(lastMesuresValues)"/>
+              <path class="sparkline-path" [attr.d]="getSparklinePath(lastMesuresValues)"/>
+            </svg>
+          </div>
+          <div class="kpi-card" [class.red-card]="alertesActives > 0">
+            <div class="kpi-icon">🔔</div>
+            <div class="kpi-label">Alertes actives</div>
+            <div class="kpi-value" [class.red]="alertesActives > 0">{{ alertesActives }}</div>
+          </div>
+          <div class="kpi-card green-card">
+            <div class="kpi-icon">⚡</div>
+            <div class="kpi-label">Consommation totale</div>
+            <div class="kpi-value green">{{ consommationTotale }}</div>
+          </div>
+        </div>
+
+        <!-- Middle row -->
+        <div class="middle-row">
+
+          <!-- Tendance -->
+          <div class="card">
+            <h3 class="card-title">📊 Tendance du mois</h3>
+            <div class="tendance-box"
+                 [class.hausse]="tendance === 'up'"
+                 [class.baisse]="tendance === 'down'"
+                 [class.stable]="tendance === 'stable'">
+              <span class="tendance-icon">
+                {{ tendance === 'up' ? '📈' : tendance === 'down' ? '📉' : '➡️' }}
+              </span>
+              <div>
+                <div class="tendance-label"
+                     [class.hausse-text]="tendance === 'up'"
+                     [class.baisse-text]="tendance === 'down'"
+                     [class.stable-text]="tendance === 'stable'">
+                  {{ tendance === 'up' ? 'HAUSSE' : tendance === 'down' ? 'BAISSE' : 'STABLE' }}
+                </div>
+                <div class="tendance-desc">
+                  Dernière valeur : <strong>{{ maxMesure }}</strong> — Moyenne : <strong>{{ moyenneMesures }}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div style="background: #f8fafc; border-radius: 10px; padding: 12px; text-align: center;">
+                <div style="font-size: 11px; color: #9aa5b4; text-transform: uppercase; letter-spacing: 0.8px;">Min</div>
+                <div style="font-size: 20px; font-weight: 800; color: #3182ce;">{{ minMesure }}</div>
+              </div>
+              <div style="background: #f8fafc; border-radius: 10px; padding: 12px; text-align: center;">
+                <div style="font-size: 11px; color: #9aa5b4; text-transform: uppercase; letter-spacing: 0.8px;">Max</div>
+                <div style="font-size: 20px; font-weight: 800; color: #e53e3e;">{{ maxMesure }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Répartition énergétique -->
+          <div class="card">
+            <h3 class="card-title">🟢 Répartition énergétique</h3>
+            <div class="energy-item" *ngFor="let e of energies; let i = index">
+              <div class="energy-header">
+                <span>{{ getEnergieIcon(e.idEnergie) }} {{ e.nom }}</span>
+                <span class="energy-pct">{{ getEnergiePct(e.idEnergie) }}%</span>
+              </div>
+              <div class="energy-bar-bg">
+                <div class="energy-bar"
+                     [style.width.%]="getEnergiePct(e.idEnergie)"
+                     [style.background]="energieColors[i % energieColors.length]">
+                </div>
+              </div>
+              <div class="energy-units">{{ getEnergieTotal(e.idEnergie) }} {{ e.unite }}</div>
+            </div>
+            <p *ngIf="!energies.length" class="empty-msg">Aucune donnée énergétique.</p>
+          </div>
+        </div>
+
+        <!-- Alert banner -->
+        <div class="alert-ok" *ngIf="alertesActives === 0">
+          ✅ Aucune alerte active — Tout fonctionne normalement !
+        </div>
+        <div class="alert-warn" *ngIf="alertesActives > 0">
+          ⚠️ <strong>{{ alertesActives }}</strong> alerte(s) active(s) —
+          <a class="link" (click)="setTab('alertes')">Voir les alertes →</a>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="quick-actions">
+          <div class="qa-card" (click)="downloadRapport('csv')">
+            <div class="qa-icon">📊</div>
+            <div class="qa-title">Export CSV</div>
+            <div class="qa-sub">Données mesures</div>
+          </div>
+          <div class="qa-card" (click)="downloadRapport('alertes')">
+            <div class="qa-icon">🔔</div>
+            <div class="qa-title">Rapport alertes</div>
+            <div class="qa-sub">CSV alertes</div>
+          </div>
+          <div class="qa-card" (click)="downloadRapport('equipements')">
+            <div class="qa-icon">⚙️</div>
+            <div class="qa-title">Équipements</div>
+            <div class="qa-sub">CSV équipements</div>
+          </div>
+          <div class="qa-card" (click)="downloadRapport('consommation')">
+            <div class="qa-icon">📄</div>
+            <div class="qa-title">Rapport conso.</div>
+            <div class="qa-sub">Fichier texte</div>
+          </div>
+          <div class="qa-card" (click)="setTab('statistiques')">
+            <div class="qa-icon">📈</div>
+            <div class="qa-title">Statistiques</div>
+            <div class="qa-sub">Analyse détaillée</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─────────────────── ALERTES ─────────────────────────────────── -->
+      <div *ngIf="activeTab === 'alertes'" class="tab-content">
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">🔔 Alertes</h2>
+            <p class="page-subtitle">
+              {{ alertes.length }} alerte(s) au total —
+              <span class="red">{{ alertesActives }} active(s)</span>
+            </p>
+          </div>
+          <button class="btn-blue" (click)="downloadRapport('alertes')">📊 Export CSV</button>
+        </div>
+
+        <!-- Stats alertes -->
+        <div class="alert-stats-grid">
+          <div class="alert-stat-card red-border">
+            <div class="stat-dot red"></div>
+            <div><div class="stat-num">{{ alertesActives }}</div><div class="stat-label">Actives</div></div>
+          </div>
+          <div class="alert-stat-card orange-border">
+            <div class="stat-icon">🔴</div>
+            <div><div class="stat-num">{{ alertesCritiques }}</div><div class="stat-label">Critiques</div></div>
+          </div>
+          <div class="alert-stat-card yellow-border">
+            <div class="stat-icon">🟡</div>
+            <div><div class="stat-num">{{ alertesHautes }}</div><div class="stat-label">Hautes</div></div>
+          </div>
+          <div class="alert-stat-card green-border">
+            <div class="stat-icon">✅</div>
+            <div><div class="stat-num">{{ alertes.length - alertesActives }}</div><div class="stat-label">Traitées</div></div>
+          </div>
+          <div class="alert-stat-card grey-border">
+            <div class="stat-icon">📋</div>
+            <div><div class="stat-num">{{ alertes.length }}</div><div class="stat-label">Total</div></div>
+          </div>
+        </div>
+
+        <!-- Filtres -->
+        <div class="filter-bar">
+          <input class="filter-input" type="text" placeholder="🔍 Rechercher une alerte..."
+                 [(ngModel)]="searchAlerte" />
+          <select class="filter-select" [(ngModel)]="filterAlerteSeverite">
+            <option value="">Toutes sévérités</option>
+            <option value="Critique">🔴 Critique</option>
+            <option value="Haute">🟠 Haute</option>
+            <option value="Moyenne">🟡 Moyenne</option>
+            <option value="Faible">🟢 Faible</option>
+          </select>
+          <select class="filter-select" [(ngModel)]="filterAlerteStatut">
+            <option value="">Tous statuts</option>
+            <option value="active">Active</option>
+            <option value="traitee">Traitée</option>
+          </select>
+        </div>
+
+        <!-- Liste alertes -->
+        <div class="alert-list">
+          <div class="alert-row" *ngFor="let a of filteredAlertes"
+               [class.resolved]="a.traite" [class.active-row]="!a.traite">
+            <div class="alert-check">{{ a.traite ? '✅' : '🔴' }}</div>
+            <div class="alert-content">
+              <div class="alert-type">{{ a.type }}</div>
+              <div class="alert-desc">{{ a.message }}</div>
+              <div class="alert-meta">
+                <span class="tag"
+                    [class.tag-r]="a.severite === 'Critique'"
+                    [class.tag-b]="a.severite === 'Haute'"
+                    [class.tag-g]="a.severite === 'Normale'"
+                  {{ a.severite }}>
+                </span>
+                <span class="alert-date">{{ a.dateCreation | date:'dd/MM/yyyy HH:mm' }}</span>
+              </div>
+            </div>
+            <div class="alert-status"
+                 [class.green-text]="a.traite"
+                 [class.red-text]="!a.traite">
+              {{ a.traite ? '✓ TRAITÉE' : '● ACTIVE' }}
+            </div>
+          </div>
+          <div *ngIf="!filteredAlertes.length" class="empty-msg">
+            Aucune alerte correspondante aux filtres.
+          </div>
+        </div>
+      </div>
+
+      <!-- ─────────────────── STATISTIQUES ────────────────────────────── -->
+      <div *ngIf="activeTab === 'statistiques'" class="tab-content">
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">📊 Statistiques</h2>
+            <p class="page-subtitle">Période : {{ dateDebut }} → {{ dateFin }}</p>
+          </div>
+          <button class="btn-blue" (click)="downloadRapport('consommation')">📄 Rapport TXT</button>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-big-icon">📊</div>
+            <div class="stat-big-num">{{ moyenneMesures }}</div>
+            <div class="stat-big-label">Moyenne</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big-icon">⬇️</div>
+            <div class="stat-big-num" style="color: #3182ce;">{{ minMesure }}</div>
+            <div class="stat-big-label">Minimum</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big-icon">⬆️</div>
+            <div class="stat-big-num" style="color: #e53e3e;">{{ maxMesure }}</div>
+            <div class="stat-big-label">Maximum</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big-icon">Σ</div>
+            <div class="stat-big-num" style="color: #00b894;">{{ consommationTotale }}</div>
+            <div class="stat-big-label">Total</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">🟢 Répartition énergétique</h3>
+          <div class="energy-item" *ngFor="let e of energies; let i = index">
+            <div class="energy-header">
+              <span>{{ getEnergieIcon(e.idEnergie) }} {{ e.nom }}</span>
+              <span class="energy-pct">{{ getEnergiePct(e.idEnergie) }}% — {{ getEnergieTotal(e.idEnergie) }} {{ e.unite }}</span>
+            </div>
+            <div class="energy-bar-bg">
+              <div class="energy-bar"
+                   [style.width.%]="getEnergiePct(e.idEnergie)"
+                   [style.background]="energieColors[i % energieColors.length]">
+              </div>
+            </div>
+          </div>
+          <p *ngIf="!energies.length" class="empty-msg">Aucune énergie disponible.</p>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">📈 Tendance de consommation</h3>
+          <div class="tendance-box"
+               [class.hausse]="tendance === 'up'"
+               [class.baisse]="tendance === 'down'"
+               [class.stable]="tendance === 'stable'">
+            <span class="tendance-icon">{{ tendance === 'up' ? '📈' : tendance === 'down' ? '📉' : '➡️' }}</span>
+            <div>
+              <div class="tendance-label"
+                   [class.hausse-text]="tendance === 'up'"
+                   [class.baisse-text]="tendance === 'down'"
+                   [class.stable-text]="tendance === 'stable'">
+                {{ tendance === 'up' ? 'HAUSSE' : tendance === 'down' ? 'BAISSE' : 'STABLE' }}
+              </div>
+              <div class="tendance-desc">
+                {{ totalMesures }} mesures analysées — Dernière valeur : {{ maxMesure }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tableau mesures avec pagination -->
+        <div class="card">
+          <h3 class="card-title">📋 Détail des mesures
+            <span style="font-size: 12px; font-weight: 400; color: #9aa5b4; margin-left: auto;">
+              {{ mesures.length }} mesure(s) — page {{ mesuresPage }}/{{ mesuresTotalPages }}
+            </span>
+          </h3>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th><th>Valeur</th><th>Énergie</th><th>Unité</th>
+                  <th>Équipement</th><th>Source</th><th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let m of mesuresPaged">
+                  <td style="color: #9aa5b4; font-size: 12px;">{{ m.idMesure }}</td>
+                  <td><strong>{{ m.valeur }}</strong></td>
+                  <td>{{ getEnergieNom(m.energieId) }}</td>
+                  <td><span class="tag tag-b">{{ getEnergieUnite(m.energieId) }}</span></td>
+                  <td>{{ m.equipement?.nom ?? '—' }}</td>
+                  <td style="color: #9aa5b4; font-size: 12px;">{{ m.sourceDonnee || '—' }}</td>
+                  <td style="font-size: 12px;">{{ m.dateMesure | date:'dd/MM/yy HH:mm' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div *ngIf="!mesures.length" class="empty-msg">Aucune mesure disponible.</div>
+
+          <!-- Pagination -->
+          <div class="pagination" *ngIf="mesuresTotalPages > 1">
+            <button class="pagination-btn" (click)="goToPage(1)" [disabled]="mesuresPage === 1">«</button>
+            <button class="pagination-btn" (click)="goToPage(mesuresPage - 1)" [disabled]="mesuresPage === 1">‹</button>
+            <button class="pagination-btn" *ngFor="let p of mesuresPagesArray"
+                    [class.active]="p === mesuresPage" (click)="goToPage(p)">{{ p }}</button>
+            <button class="pagination-btn" (click)="goToPage(mesuresPage + 1)" [disabled]="mesuresPage === mesuresTotalPages">›</button>
+            <button class="pagination-btn" (click)="goToPage(mesuresTotalPages)" [disabled]="mesuresPage === mesuresTotalPages">»</button>
+            <span class="pagination-info">{{ mesures.length }} total</span>
+          </div>
+
+          <button class="btn-blue mt-12" (click)="exportMesuresCSV()">📊 Télécharger CSV complet</button>
+        </div>
+      </div>
+
+      <!-- ─────────────────── ÉQUIPEMENTS ─────────────────────────────── -->
+      <div *ngIf="activeTab === 'equipements'" class="tab-content">
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">⚙️ Équipements</h2>
+            <p class="page-subtitle">
+              {{ equipements.length }} équipement(s) —
+              <span class="green-text">{{ equipementsActifs }} actifs</span> /
+              <span class="orange-text">{{ equipementsMaintenance }} maintenance</span> /
+              <span class="red-text">{{ equipementsInactifs }} inactifs</span>
+            </p>
+          </div>
+          <button class="btn-blue" (click)="downloadRapport('equipements')">📊 Export CSV</button>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card green-card">
+            <div class="kpi-icon">✅</div>
+            <div class="kpi-label">Actifs</div>
+            <div class="kpi-value green">{{ equipementsActifs }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon">🔧</div>
+            <div class="kpi-label">Maintenance</div>
+            <div class="kpi-value orange">{{ equipementsMaintenance }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon">⛔</div>
+            <div class="kpi-label">Inactifs</div>
+            <div class="kpi-value red">{{ equipementsInactifs }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon">⚡</div>
+            <div class="kpi-label">Puissance totale (kW)</div>
+            <div class="kpi-value">{{ puissanceTotale }}</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <!-- Filtres équipements -->
+          <div class="filter-bar" style="margin-bottom: 16px;">
+            <input class="filter-input" type="text" placeholder="🔍 Nom, type, localisation..."
+                   [(ngModel)]="searchEquip" />
+            <select class="filter-select" [(ngModel)]="filterEquipType">
+              <option value="">Tous types</option>
+              <option *ngFor="let t of equipTypes" [value]="t">{{ t }}</option>
+            </select>
+            <select class="filter-select" [(ngModel)]="filterEquipStatut">
+              <option value="">Tous statuts</option>
+              <option value="Actif">✅ Actif</option>
+              <option value="Maintenance">🔧 Maintenance</option>
+              <option value="Inactif">⛔ Inactif</option>
+            </select>
+          </div>
+
+          <h3 class="card-title">
+            📋 Liste des équipements
+            <span style="font-size: 12px; font-weight: 400; color: #9aa5b4; margin-left: auto;">
+              {{ filteredEquipements.length }} résultat(s)
+            </span>
+          </h3>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th><th>Nom</th><th>Type</th><th>Statut</th>
+                  <th>Puissance</th><th>Zone</th><th>Âge</th><th>Mesures</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let e of filteredEquipements">
+                  <td style="color: #9aa5b4; font-size: 12px;">{{ e.idEquipement }}</td>
+                  <td style="font-weight: 600;">{{ getEquipIcon(e.typeEquipement) }} {{ e.nom }}</td>
+                  <td>{{ e.typeEquipement || '—' }}</td>
+                  <td>
+                    <span class="tag" [ngClass]="getEquipStatutClass(e.statut)">
+                      {{ e.statut || 'Actif' }}
+                    </span>
+                  </td>
+                  <td>{{ e.puissance ? (e.puissance + ' kW') : '—' }}</td>
+                  <td>{{ e.zone?.nom ?? '—' }}</td>
+                  <td style="font-size: 12px; color: #9aa5b4;">{{ getEquipAge(e) }}</td>
+                  <td>
+                    <span class="tag tag-b">{{ getMesuresCount(e.idEquipement) }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div *ngIf="!filteredEquipements.length" class="empty-msg">Aucun équipement trouvé.</div>
+        </div>
+      </div>
+
+      <!-- ─────────────────── SITES & ZONES ───────────────────────────── -->
+      <div *ngIf="activeTab === 'sites'" class="tab-content">
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">🏭 Sites &amp; Zones</h2>
+            <p class="page-subtitle">{{ totalSites }} site(s) — {{ totalZones }} zone(s)</p>
+          </div>
+          <button class="btn-blue" (click)="downloadRapport('sites')">📊 Export CSV</button>
+        </div>
+
+        <div *ngFor="let s of sites">
+          <div class="card site-card">
+            <div class="site-header">
+              <div>
+                <h3 class="site-name">🏭 {{ s.nom }}</h3>
+                <p class="site-loc" *ngIf="s.localisation">📍 {{ s.localisation }}</p>
+              </div>
+              <div class="site-meta">
+                <span class="tag tag-g">{{ getZonesBySite(s.idSite).length }} zone(s)</span>
+                <span class="tag tag-b">{{ getEquipBySite(s.idSite).length }} équip.</span>
+                <span class="tag tag-p">{{ getMesuresBySite(s.idSite) }} mesures</span>
+              </div>
+            </div>
+
+            <div class="zone-list">
+              <div class="zone-row" *ngFor="let z of getZonesBySite(s.idSite)">
+                <div class="zone-info">
+                  <span class="zone-icon">📍</span>
+                  <span class="zone-name">{{ z.nom }}</span>
+                </div>
+                <div class="zone-stats">
+                  <span class="tag tag-b">{{ getEquipByZone(z.idZone).length }} équip.</span>
+                  <span class="tag tag-p">{{ getMesuresByZone(z.idZone) }} mesures</span>
+                </div>
+              </div>
+              <p *ngIf="!getZonesBySite(s.idSite).length" class="empty-msg">Aucune zone pour ce site.</p>
+            </div>
+          </div>
+        </div>
+
+        <p *ngIf="!sites.length" class="empty-msg">Aucun site disponible.</p>
+      </div>
+
+      <!-- ─────────────────── RAPPORTS ────────────────────────────────── -->
+      <div *ngIf="activeTab === 'rapports'" class="tab-content">
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">📄 Rapports &amp; Exports</h2>
+            <p class="page-subtitle">Téléchargez vos données en différents formats</p>
+          </div>
+        </div>
+
+        <div class="reports-grid">
+          <div class="report-card" (click)="downloadRapport('consommation')">
+            <div class="report-icon">📊</div>
+            <div>
+              <div class="report-title">Rapport de consommation</div>
+              <div class="report-desc">Synthèse complète — Format TXT</div>
+            </div>
+          </div>
+          <div class="report-card" (click)="downloadRapport('csv')">
+            <div class="report-icon">📋</div>
+            <div>
+              <div class="report-title">Export mesures CSV</div>
+              <div class="report-desc">{{ mesures.length }} lignes de données</div>
+            </div>
+          </div>
+          <div class="report-card" (click)="downloadRapport('alertes')">
+            <div class="report-icon">🔔</div>
+            <div>
+              <div class="report-title">Rapport alertes</div>
+              <div class="report-desc">{{ alertes.length }} alertes — Format CSV</div>
+            </div>
+          </div>
+          <div class="report-card" (click)="downloadRapport('equipements')">
+            <div class="report-icon">⚙️</div>
+            <div>
+              <div class="report-title">Rapport équipements</div>
+              <div class="report-desc">{{ equipements.length }} équipements — Format CSV</div>
+            </div>
+          </div>
+          <div class="report-card" (click)="downloadRapport('sites')">
+            <div class="report-icon">🏭</div>
+            <div>
+              <div class="report-title">Rapport sites &amp; zones</div>
+              <div class="report-desc">{{ totalSites }} site(s), {{ totalZones }} zone(s)</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">ℹ️ Informations sur les exports</h3>
+          <div style="font-size: 13.5px; color: #718096; line-height: 1.8;">
+            <p style="margin: 0 0 8px;">Les fichiers CSV sont encodés en <strong>UTF-8 avec BOM</strong> pour une compatibilité optimale avec Excel.</p>
+            <p style="margin: 0 0 8px;">Le séparateur utilisé est le <strong>point-virgule (;)</strong>, standard pour les pays francophones.</p>
+            <p style="margin: 0;">Les données exportées correspondent aux données actuellement chargées — période : <strong>{{ dateDebut }}</strong> → <strong>{{ dateFin }}</strong>.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─────────────────── MON PROFIL ──────────────────────────────── -->
+      <div *ngIf="activeTab === 'profil'" class="tab-content">
+        <div class="page-header">
+          <h2 class="page-title">👤 Mon profil</h2>
+          <p class="page-header-right">Informations de votre compte employé</p>
+        </div>
+
+        <div class="profil-row">
+          <div class="card">
+            <div class="profil-top">
+              <div class="profil-avatar">{{ currentUser?.nom?.charAt(0)?.toUpperCase() ?? '?' }}</div>
+              <div>
+                <div class="profil-name">{{ currentUser?.nom ?? '—' }}</div>
+                <div class="profil-email">{{ currentUser?.email ?? '—' }}</div>
+                <span class="profil-badge">{{ currentUser?.role ?? 'Employé' }}</span>
+              </div>
+            </div>
+            <div class="profil-fields">
+              <div class="profil-field">
+                <span class="field-icon">👤</span>
+                <span class="field-label">Rôle</span>
+                <span class="field-value">{{ currentUser?.role ?? '—' }}</span>
+              </div>
+              <div class="profil-field">
+                <span class="field-icon">📧</span>
+                <span class="field-label">Email</span>
+                <span class="field-value">{{ currentUser?.email ?? '—' }}</span>
+              </div>
+              <div class="profil-field">
+                <span class="field-icon">🔒</span>
+                <span class="field-label">Accès</span>
+                <span class="field-value">Consultation uniquement</span>
+              </div>
+              <div class="profil-field">
+                <span class="field-icon">🌐</span>
+                <span class="field-label">Plateforme</span>
+                <span class="field-value">WICMIC EnergyTracker v1</span>
+              </div>
+              <div class="profil-field">
+                <span class="field-icon">🕐</span>
+                <span class="field-label">Heure actuelle</span>
+                <span class="field-value">{{ currentTime | date:'HH:mm:ss' }}</span>
+              </div>
+              <div class="profil-field">
+                <span class="field-icon">🌙</span>
+                <span class="field-label">Thème</span>
+                <span class="field-value">{{ isDarkMode ? 'Sombre' : 'Clair' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card permissions-card">
+            <h3 class="card-title">🔒 Mes permissions</h3>
+            <div class="perm-item"><span class="perm-check">✅</span> Consulter les KPIs énergétiques</div>
+            <div class="perm-item"><span class="perm-check">✅</span> Voir les alertes actives</div>
+            <div class="perm-item"><span class="perm-check">✅</span> Consulter les statistiques</div>
+            <div class="perm-item"><span class="perm-check">✅</span> Exporter en CSV / TXT</div>
+            <div class="perm-item"><span class="perm-check">✅</span> Activer le mode sombre</div>
+            <div class="perm-item"><span class="perm-check">✅</span> Consulter les sites &amp; zones</div>
+            <div class="perm-item denied"><span class="perm-cross">❌</span> <s>Saisir des mesures</s></div>
+            <div class="perm-item denied"><span class="perm-cross">❌</span> <s>Modifier des alertes</s></div>
+            <div class="perm-item denied"><span class="perm-cross">❌</span> <s>Gérer les utilisateurs</s></div>
+            <div class="perm-item denied"><span class="perm-cross">❌</span> <s>Accéder à l'IA / LLM</s></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">⚡ Actions rapides</h3>
+          <div class="quick-btns">
+            <button class="qbtn green"       (click)="setTab('dashboard')">🏠 Tableau de bord</button>
+            <button class="qbtn yellow"      (click)="setTab('alertes')">🔔 Voir les alertes</button>
+            <button class="qbtn blue-light"  (click)="setTab('statistiques')">📊 Statistiques</button>
+            <button class="qbtn purple"      (click)="setTab('equipements')">⚙️ Équipements</button>
+            <button class="qbtn teal"        (click)="setTab('sites')">🏭 Sites &amp; Zones</button>
+            <button class="qbtn pink"        (click)="setTab('rapports')">📄 Rapports</button>
+            <button class="qbtn green-light" (click)="downloadRapport('csv')">📊 Export CSV</button>
+            <button class="qbtn dark"        (click)="toggleDarkMode()">
+              {{ isDarkMode ? '☀️ Mode clair' : '🌙 Mode sombre' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </ng-container>
+</div>
