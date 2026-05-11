@@ -105,13 +105,13 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   private toastCounter = 0;
 
   // ── Données API ───────────────────────────────────────────────────────────
-  mesures:         Mesure[]         = [];
-  alertes:         AlerteExt[]      = [];
-  anomalies:       AnomalieExt[]    = [];
+  mesures:         Mesure[]            = [];
+  alertes:         AlerteExt[]         = [];
+  anomalies:       AnomalieExt[]       = [];
   recommandations: RecommandationExt[] = [];
-  equipements:     Equipement[]     = [];
-  energies:        Energie[]        = [];
-  zones:           Zone[]           = [];
+  equipements:     Equipement[]        = [];
+  energies:        Energie[]           = [];
+  zones:           Zone[]              = [];
 
   toasts:    ToastMsg[]               = [];
   apiErrors: Record<string, boolean>  = {};
@@ -1311,7 +1311,7 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   dismissToast(id: number): void { this.toasts = this.toasts.filter(t => t.id !== id); }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // LOAD ALL
+  // LOAD ALL  ← FIX : filtre sur electriciteId après normalisation
   // ═══════════════════════════════════════════════════════════════════════════
 
   loadAll(): void {
@@ -1326,10 +1326,18 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
         this.computeComparaison();
       }
     };
+
+    // ✅ FIX : on filtre uniquement les mesures d'électricité (energieId === 1)
     this.api.getMesures().subscribe({
-      next:  (d: any) => { this.mesures = (d as any[]).map((m: any) => this.normalizeMesure(m)); check(); },
-      error: ()       => { this.apiErrors['mesures'] = true; check(); },
+      next: (d: any) => {
+        this.mesures = (d as any[])
+          .map((m: any) => this.normalizeMesure(m))
+          .filter(m => Number(m.energieId) === this.electriciteId);
+        check();
+      },
+      error: () => { this.apiErrors['mesures'] = true; check(); },
     });
+
     this.api.getAlertes().subscribe({
       next:  (d: any) => { this.alertes = (d as any[]).map((a: any) => this.normalizeAlerte(a)); this.alertesApi = this.alertes; check(); },
       error: ()       => { this.apiErrors['alertes'] = true; check(); },

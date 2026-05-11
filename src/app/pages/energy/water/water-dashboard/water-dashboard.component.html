@@ -1030,7 +1030,7 @@
       </div>
 
       <div class="form-field">
-        <label>Équipement <span class="opt">(optionnel)</span></label>
+        <label>Équipement <span class="opt"></span></label>
         <select formControlName="equipementId">
           <option value="">— Aucun —</option>
           <option *ngFor="let e of equipements" [value]="e.idEquipement">{{ e.nom }}</option>

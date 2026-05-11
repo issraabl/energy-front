@@ -187,7 +187,8 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   searchSite    = '';
   showSiteModal = false;
   editingSite:  Site | null = null;
-  newSite: Partial<Site> = { nom: '', adresse: '', description: '' };
+  // ✅ FIX: initialisation explicite avec des chaînes vides
+  newSite: { nom: string; adresse: string; description: string } = { nom: '', adresse: '', description: '' };
 
   // ── Zones UI ────────────────────────────────────────────────────────────────
   searchZone     = '';
@@ -645,30 +646,31 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // SITES — CRUD
+  // SITES — CRUD  ✅ CORRIGÉ
   // ══════════════════════════════════════════════════════════════════════════════
 
   get filteredSites(): Site[] {
     if (!this.searchSite) return this.sites;
     const q = this.searchSite.toLowerCase();
     return this.sites.filter(s =>
-      s.nom.toLowerCase().includes(q)               ||
+      (s.nom         ?? '').toLowerCase().includes(q) ||
       (s.adresse     ?? '').toLowerCase().includes(q) ||
       (s.description ?? '').toLowerCase().includes(q)
     );
   }
 
   getSiteZonesCount(siteId: number): number {
-    return this.zones.filter(z => z.siteId === siteId || z.siteId === Number(siteId)).length;
+    return this.zones.filter(z => Number(z.siteId) === Number(siteId)).length;
   }
 
   getSiteEquipCount(siteId: number): number {
     const zoneIds = this.zones
-      .filter(z => z.siteId === siteId || z.siteId === Number(siteId))
+      .filter(z => Number(z.siteId) === Number(siteId))
       .map(z => z.idZone);
-    return this.equipements.filter(e => e.zoneId !== undefined && zoneIds.includes(e.zoneId)).length;
+    return this.equipements.filter(e => e.zoneId !== undefined && zoneIds.includes(Number(e.zoneId))).length;
   }
 
+  // ✅ FIX: réinitialisation avec type fort, pas Partial
   openNewSite(): void {
     this.newSite     = { nom: '', adresse: '', description: '' };
     this.editingSite = null;
@@ -677,29 +679,103 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   editSite(site: Site): void {
     this.editingSite = { ...site };
-    this.newSite     = { nom: site.nom, adresse: site.adresse ?? '', description: site.description ?? '' };
+    this.newSite = {
+      nom:         site.nom         ?? '',
+      adresse:     site.adresse     ?? '',
+      description: site.description ?? ''
+    };
     this.showSiteModal = true;
   }
 
+  // ✅ FIX PRINCIPAL: saveSite entièrement reécrit
   saveSite(): void {
-    if (!this.newSite.nom?.trim()) { this.showToast('Le nom du site est requis', 'error'); return; }
+    // 1. Validation
+    const nomTrimmed = (this.newSite.nom ?? '').trim();
+    if (!nomTrimmed) {
+      this.showToast('Le nom du site est requis', 'error');
+      return;
+    }
 
-    const refreshSites = () => {
-      this.http.get<Site[]>(`${this.API}/Sites`).subscribe({
-        next: data => { this.sites = data || []; this.totalSites = this.sites.length; }
-      });
+    // 2. Payload propre
+    const payload = {
+      nom:         nomTrimmed,
+      adresse:     (this.newSite.adresse     ?? '').trim() || null,
+      description: (this.newSite.description ?? '').trim() || null,
     };
 
     if (this.editingSite) {
-      const payload = { ...this.editingSite, ...this.newSite };
-      this.http.put(`${this.API}/Sites/${this.editingSite.idSite}`, payload).subscribe({
-        next: () => { this.showSiteModal = false; this.editingSite = null; refreshSites(); this.showToast('Site modifié avec succès', 'success'); },
-        error: (e) => this.showToast('Erreur: ' + (e.error?.message || e.statusText), 'error')
+      // ── MODIFICATION ──
+      const fullPayload = {
+        idSite:      this.editingSite.idSite,
+        nom:         payload.nom,
+        adresse:     payload.adresse,
+        description: payload.description,
+      };
+
+      this.http.put(`${this.API}/Sites/${this.editingSite.idSite}`, fullPayload).subscribe({
+        next: () => {
+          this.showSiteModal = false;
+          this.editingSite   = null;
+          this.newSite       = { nom: '', adresse: '', description: '' };
+          this.showToast('Site modifié avec succès', 'success');
+          // Rechargement depuis serveur
+          this.http.get<Site[]>(`${this.API}/Sites`).subscribe({
+            next: data => {
+              this.sites      = data || [];
+              this.totalSites = this.sites.length;
+            }
+          });
+        },
+        error: (e: any) => {
+          const msg = e.error?.message || e.error?.title || e.statusText || 'Erreur inconnue';
+          this.showToast('Erreur modification site : ' + msg, 'error');
+          console.error('[saveSite PUT]', e);
+        }
       });
+
     } else {
-      this.http.post<Site>(`${this.API}/Sites`, this.newSite).subscribe({
-        next: () => { this.showSiteModal = false; refreshSites(); this.showToast('Site créé avec succès', 'success'); },
-        error: (e) => this.showToast('Erreur: ' + (e.error?.message || e.statusText), 'error')
+      // ── CRÉATION ──
+      this.http.post<Site>(`${this.API}/Sites`, payload).subscribe({
+        next: (created) => {
+          this.showSiteModal = false;
+          this.editingSite   = null;
+          this.showToast('Site créé avec succès', 'success');
+
+          // ✅ FIX: On recharge TOUJOURS depuis le serveur après création
+          // pour avoir le vrai objet avec idSite et nom corrects
+          this.http.get<Site[]>(`${this.API}/Sites`).subscribe({
+            next: data => {
+              this.sites      = data || [];
+              this.totalSites = this.sites.length;
+              // Reset APRÈS rechargement pour éviter que le binding réinitialise avant
+              this.newSite = { nom: '', adresse: '', description: '' };
+            },
+            error: () => {
+              // Fallback: si rechargement échoue, on ajoute manuellement
+              // avec les données qu'on connaît
+              if (created && created.idSite) {
+                // Le serveur a renvoyé l'objet complet
+                this.sites = [...this.sites, created];
+              } else {
+                // Dernier recours: construire l'objet depuis le payload
+                const fallbackSite: Site = {
+                  idSite:      created?.idSite ?? Date.now(),
+                  nom:         payload.nom,
+                  adresse:     payload.adresse ?? undefined,
+                  description: payload.description ?? undefined,
+                };
+                this.sites = [...this.sites, fallbackSite];
+              }
+              this.totalSites = this.sites.length;
+              this.newSite    = { nom: '', adresse: '', description: '' };
+            }
+          });
+        },
+        error: (e) => {
+          const msg = e.error?.message || e.error?.title || e.statusText || 'Erreur inconnue';
+          this.showToast('Erreur création site : ' + msg, 'error');
+          console.error('[saveSite POST]', e);
+        }
       });
     }
   }
@@ -731,11 +807,11 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   getSiteNom(siteId: number): string {
-    return this.sites.find(s => s.idSite === siteId || s.idSite === Number(siteId))?.nom ?? '—';
+    return this.sites.find(s => Number(s.idSite) === Number(siteId))?.nom ?? '—';
   }
 
   getZoneEquipCount(zoneId: number): number {
-    return this.equipements.filter(e => e.zoneId === zoneId || e.zoneId === Number(zoneId)).length;
+    return this.equipements.filter(e => Number(e.zoneId) === Number(zoneId)).length;
   }
 
   openNewZone(): void {
@@ -815,7 +891,7 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   getSiteFromZone(zoneId: number | undefined): string {
     if (!zoneId) return '—';
-    const zone = this.zones.find(z => z.idZone === zoneId || z.idZone === Number(zoneId));
+    const zone = this.zones.find(z => Number(z.idZone) === Number(zoneId));
     if (!zone) return '—';
     return this.getSiteNom(zone.siteId);
   }
@@ -1330,7 +1406,7 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // EXPORT PDF — méthode principale
+  // EXPORT PDF
   // ══════════════════════════════════════════════════════════════════════════════
 
   async exportRapportPDF(type: string): Promise<void> {
@@ -1367,7 +1443,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
       doc.rect(margin, y, usable, 1, 'F');
       y += 6;
 
-      // ── KPI Cards ──
       const kpis = [
         { label: 'Sites',         value: String(this.totalSites),        rgb: C.blue   },
         { label: 'Zones',         value: String(this.zonesCount),        rgb: C.indigo },
@@ -1392,7 +1467,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
       });
       y += 4;
 
-      // ── Consommation ──
       checkY(46);
       y = this.pdfSection(doc, 'CONSOMMATION ENERGETIQUE', 'Indicateurs', margin, y, usable);
 
@@ -1415,7 +1489,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
       });
       y += (cH + 3) * 2 + 5;
 
-      // ── Répartition ──
       checkY(38);
       y = this.pdfSection(doc, 'REPARTITION ENERGETIQUE', '', margin, y, usable);
       const labelW = 24, pctW = 10, barW = usable - labelW - pctW - 4;
@@ -1431,13 +1504,11 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
       });
       y += 3;
 
-      // ── Chart ──
       checkY(62);
       y = this.pdfSection(doc, 'EVOLUTION MENSUELLE', '7 derniers mois', margin, y, usable);
       this.pdfBarChart(doc, margin, y + 10, usable, 46);
       y += 64;
 
-      // ── Page 2 ──
       newPage();
       this.pdfTxt(doc, 'Alertes & Mesures', margin, y, C.navy, 14, true);
       y += 7;
@@ -1511,7 +1582,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
 
       y = this.pdfTable(doc, mesH, mesR, margin, y, pageW, pageH, margin, type, C.amber);
 
-      // ── Page 3 ──
       newPage();
       this.pdfTxt(doc, 'Infrastructure & Utilisateurs', margin, y, C.navy, 14, true);
       y += 7;
@@ -1559,7 +1629,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
       ]);
       y = this.pdfTable(doc, userH, userR, margin, y, pageW, pageH, margin, type, C.purple);
 
-      // ── Numéros de pages ──
       const totalPages = (doc.internal as any).getNumberOfPages();
       for (let p = 1; p <= totalPages; p++) {
         doc.setPage(p);
@@ -1583,7 +1652,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
   // ══════════════════════════════════════════════════════════════════════════════
 
   private async loadJsPDF(): Promise<any> {
-    // Charge jsPDF dynamiquement depuis CDN si non disponible localement
     if (typeof (window as any).jspdf !== 'undefined') {
       return (window as any).jspdf.jsPDF;
     }
@@ -1599,22 +1667,17 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     });
   }
 
-  /** En-tête de page */
   private pdfPageHeader(doc: any, pageW: number, _pageH: number, type: string, margin: number): void {
     const C = this.PDF_COLORS;
-    // Bande en-tête
     this.pdfSetFill(doc, C.navy);
     doc.rect(0, 0, pageW, 14, 'F');
-    // Accent couleur
     this.pdfSetFill(doc, C.indigo);
     doc.rect(0, 14, pageW, 2, 'F');
-    // Textes
     this.pdfTxt(doc, 'WICMIC EnergyTracker', margin, 9.5, C.white, 9, true);
     this.pdfTxt(doc, `Rapport : ${type}`, pageW / 2, 9.5, C.cyan, 8, false, 'center');
     this.pdfTxt(doc, new Date().toLocaleDateString('fr-FR'), pageW - margin, 9.5, C.white, 8, false, 'right');
   }
 
-  /** Pied de page */
   private pdfPageFooter(doc: any, pageW: number, pageH: number, margin: number, page: number, total: number): void {
     const C = this.PDF_COLORS;
     this.pdfSetFill(doc, C.grayLine);
@@ -1623,7 +1686,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     this.pdfTxt(doc, `Page ${page} / ${total}`, pageW - margin, pageH - 5, C.textMuted, 6.5, false, 'right');
   }
 
-  /** Texte avec couleur / taille / alignement */
   private pdfTxt(
     doc:   any,
     text:  string,
@@ -1640,12 +1702,10 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     doc.text(text ?? '', x, y, { align });
   }
 
-  /** Définir la couleur de remplissage */
   private pdfSetFill(doc: any, rgb: [number, number, number]): void {
     doc.setFillColor(rgb[0], rgb[1], rgb[2]);
   }
 
-  /** Rectangle arrondi (approximé avec un rect simple car jsPDF n'a pas roundedRect stable) */
   private pdfRR(
     doc: any, x: number, y: number, w: number, h: number,
     rgb: [number, number, number], _r = 2
@@ -1654,7 +1714,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     doc.rect(x, y, w, h, 'F');
   }
 
-  /** Carte KPI */
   private pdfKpiCard(
     doc:   any,
     x:     number,
@@ -1666,18 +1725,13 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     rgb:   [number, number, number]
   ): void {
     const C = this.PDF_COLORS;
-    // Fond
     this.pdfRR(doc, x, y, w, h, C.grayBg, 3);
-    // Barre colorée en haut
     this.pdfSetFill(doc, rgb);
     doc.rect(x, y, w, 2.5, 'F');
-    // Valeur
     this.pdfTxt(doc, value, x + w / 2, y + 11, rgb, 14, true, 'center');
-    // Label
     this.pdfTxt(doc, label, x + w / 2, y + 18, C.textMuted, 6.5, false, 'center');
   }
 
-  /** Titre de section */
   private pdfSection(
     doc:      any,
     title:    string,
@@ -1698,7 +1752,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     return y + 12;
   }
 
-  /** Barre de progression horizontale */
   private pdfBar(
     doc: any, x: number, y: number, maxW: number,
     pct: number, rgb: [number, number, number]
@@ -1706,16 +1759,13 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     const C   = this.PDF_COLORS;
     const h   = 8;
     const barW = Math.max(0, Math.min((pct / 100) * maxW, maxW));
-    // Fond gris
     this.pdfRR(doc, x, y, maxW, h, C.grayBg, 2);
-    // Remplissage coloré
     if (barW > 0) {
       this.pdfSetFill(doc, rgb);
       doc.rect(x, y, barW, h, 'F');
     }
   }
 
-  /** Graphique en barres groupées (7 mois) */
   private pdfBarChart(doc: any, x: number, y: number, w: number, h: number): void {
     const C      = this.PDF_COLORS;
     const labels = this.chartData.labels;
@@ -1734,13 +1784,11 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
 
     labels.forEach((label, i) => {
       const cx = x + i * colW;
-
       const series = [
         { values: this.chartData.electricite, rgb: C.blue  },
         { values: this.chartData.eau,         rgb: C.cyan  },
         { values: this.chartData.gasoil,      rgb: C.amber },
       ];
-
       series.forEach((s, si) => {
         const val   = s.values[i] ?? 0;
         const bh    = Math.max(1, (val / maxVal) * h);
@@ -1749,15 +1797,12 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
         this.pdfSetFill(doc, s.rgb);
         doc.rect(bx, by, barW, bh, 'F');
       });
-
-      // Label mois
       this.pdfTxt(doc, label, cx + colW / 2, y + h + 5, C.textMuted, 6, false, 'center');
     });
 
-    // Légende
     const legendY = y + h + 10;
     const legendItems = [
-      { label: 'Electricité', rgb: C.blue  },
+      { label: 'Électricité', rgb: C.blue  },
       { label: 'Eau',         rgb: C.cyan  },
       { label: 'Gasoil',      rgb: C.amber },
     ];
@@ -1769,7 +1814,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     });
   }
 
-  /** Tableau générique avec pagination de pages automatique */
   private pdfTable(
     doc:     any,
     headers: { title: string; w: number; align?: string }[],
@@ -1808,7 +1852,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
         y = drawHeader(y);
       }
 
-      // Fond alterné
       if (ri % 2 === 0) {
         this.pdfSetFill(doc, C.grayBg);
         doc.rect(x, y, headers.reduce((s, h) => s + h.w, 0), rowH, 'F');
@@ -1820,7 +1863,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
         const text = String(cell.text ?? '');
 
         if (cell.badge) {
-          // Badge coloré
           const bw = Math.min(col.w - 4, 18);
           const bx = cx + (col.w - bw) / 2;
           this.pdfRR(doc, bx, y + 1.5, bw, rowH - 3, cell.badge.rgb, 2);
@@ -1828,7 +1870,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
         } else {
           const align = (cell.align ?? col.align ?? 'left') as 'left' | 'center' | 'right';
           const tx    = align === 'center' ? cx + col.w / 2 : align === 'right' ? cx + col.w - 2 : cx + 2;
-          // Tronquer si trop long
           const maxChars = Math.floor(col.w / 1.8);
           const display  = text.length > maxChars ? text.slice(0, maxChars - 1) + '…' : text;
           this.pdfTxt(doc, display, tx, y + 5, C.textMain, 6.5, cell.bold ?? false, align);
@@ -1837,7 +1878,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
         cx += col.w;
       });
 
-      // Ligne séparatrice légère
       this.pdfSetFill(doc, C.grayLine);
       doc.rect(x, y + rowH - 0.2, headers.reduce((s, h) => s + h.w, 0), 0.2, 'F');
 
@@ -1931,7 +1971,7 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
   getEquipTypeIcon(type: string): string {
     if (!type) return '⚙️';
     const t = type.toLowerCase();
-    if (t.includes('textile') || t.includes('machine'))   return '🏭';
+    if (t.includes('textile') || t.includes('machine'))    return '🏭';
     if (t.includes('moteur')  || t.includes('électrique')) return '⚡';
     if (t.includes('pompe'))                               return '🔧';
     return '⚙️';
@@ -1967,7 +2007,7 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
 
   getTypeChipClass(type: string): string {
     const t = (type ?? '').toLowerCase();
-    if (t.includes('textile') || t.includes('machine'))   return 'chip chip--purple';
+    if (t.includes('textile') || t.includes('machine'))    return 'chip chip--purple';
     if (t.includes('moteur')  || t.includes('électrique')) return 'chip chip--blue';
     if (t.includes('pompe'))                               return 'chip chip--cyan';
     return 'chip chip--gray';
@@ -1990,7 +2030,7 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
   getRoleLabel(role: string): string {
     const r = (role ?? '').toLowerCase();
     if (r.includes('admin'))                                       return 'Admin';
-    if (r.includes('electricite') || r.includes('électricite'))   return 'Resp. Electricité';
+    if (r.includes('electricite') || r.includes('électricite'))   return 'Resp. Électricité';
     if (r.includes('eau'))                                         return 'Resp. Eau';
     if (r.includes('gaz') || r.includes('gasoil'))                return 'Resp. Gasoil';
     if (r.includes('responsable') || r.includes('energie'))       return 'Resp. Énergie';

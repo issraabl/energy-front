@@ -166,7 +166,6 @@
           <div class="kpi-card__body"><span class="kpi-card__value">{{ totalMesures }}</span><span class="kpi-card__label">MESURES</span></div>
           <span class="kpi-card__arrow">→</span>
         </div>
-        <!-- FIX: alertesActives (getter) au lieu de totalAlertes pour l'accueil -->
         <div class="kpi-card kpi-card--red" (click)="navigate('toutes-alertes')">
           <div class="kpi-card__icon">🔔</div>
           <div class="kpi-card__body">
@@ -228,7 +227,6 @@
         <div class="card">
           <div class="card__header">
             <span class="card__title">🔔 Alertes récentes</span>
-            <!-- FIX: utilise alertesActives (getter robuste) -->
             <span class="chip chip--green" *ngIf="alertesActives === 0">✓ Système nominal</span>
             <span class="chip chip--red" *ngIf="alertesActives > 0">⚠ {{ alertesActives }} active(s)</span>
           </div>
@@ -236,7 +234,6 @@
             <div class="empty-inline"><span>✅</span><span>Aucune alerte active — Système nominal</span></div>
           </div>
           <div *ngIf="alertesActives > 0">
-            <!-- FIX: filtrer les alertes actives avant d'afficher -->
             <div *ngFor="let a of alertes | slice:0:4" class="alert-row">
               <span class="alert-row__dot"></span>
               <div class="alert-row__content">
@@ -319,7 +316,11 @@
           </div>
         </div>
         <div class="sites-grid">
+
+          <!-- ✅ FIX: carte site avec affichage complet et fallbacks -->
           <div class="site-card" *ngFor="let s of filteredSites; trackBy: trackById">
+
+            <!-- En-tête : icône + boutons d'action -->
             <div class="site-card__header">
               <div class="site-card__icon-wrap">🏢</div>
               <div class="site-card__actions">
@@ -327,20 +328,40 @@
                 <button class="btn-icon btn-icon--danger" (click)="deleteSite(s.idSite)" title="Supprimer">🗑️</button>
               </div>
             </div>
-            <h3 class="site-card__name">{{ s.nom }}</h3>
+
+            <!-- ✅ Nom du site — fallback explicite si vide -->
+            <h3 class="site-card__name">{{ s.nom && s.nom.trim() ? s.nom : '(Sans nom)' }}</h3>
+
+            <!-- ID du site -->
             <p class="site-card__id">#{{ s.idSite }}</p>
-            <div class="site-card__meta" *ngIf="s.adresse"><span>📍</span><span>{{ s.adresse }}</span></div>
-            <div class="site-card__meta" *ngIf="s.description"><span>📝</span><span class="site-card__desc">{{ s.description }}</span></div>
+
+            <!-- Adresse — affichée seulement si non vide -->
+            <div class="site-card__meta" *ngIf="s.adresse && s.adresse.trim()">
+              <span>📍</span>
+              <span>{{ s.adresse }}</span>
+            </div>
+
+            <!-- Description — affichée seulement si non vide -->
+            <div class="site-card__meta" *ngIf="s.description && s.description.trim()">
+              <span>📝</span>
+              <span class="site-card__desc">{{ s.description }}</span>
+            </div>
+
+            <!-- Pied de carte : badges zones + équipements -->
             <div class="site-card__footer">
               <span class="chip chip--blue">{{ getSiteZonesCount(s.idSite) }} zone(s)</span>
               <span class="chip chip--purple">{{ getSiteEquipCount(s.idSite) }} équip.</span>
             </div>
+
           </div>
+
+          <!-- État vide -->
           <div class="empty-state" *ngIf="filteredSites.length === 0">
             <span>🏢</span>
             <p>Aucun site trouvé</p>
             <button class="btn btn--primary" style="margin-top:10px" (click)="openNewSite()">+ Créer un site</button>
           </div>
+
         </div>
       </div>
 
@@ -351,9 +372,18 @@
             <h2>{{ editingSite ? '✏️ Modifier le site' : '➕ Nouveau site' }}</h2>
             <button class="modal__close" (click)="showSiteModal=false">✕</button>
           </div>
-          <div class="form-group"><label>Nom du site *</label><input type="text" [(ngModel)]="newSite.nom" placeholder="Ex: Usine Nord"/></div>
-          <div class="form-group"><label>Adresse</label><input type="text" [(ngModel)]="newSite.adresse" placeholder="Ex: Zone industrielle, Tunis"/></div>
-          <div class="form-group"><label>Description</label><textarea [(ngModel)]="newSite.description" rows="3" placeholder="Description du site..."></textarea></div>
+          <div class="form-group">
+            <label>Nom du site *</label>
+            <input type="text" [(ngModel)]="newSite.nom" placeholder="Ex: Usine Nord"/>
+          </div>
+          <div class="form-group">
+            <label>Adresse</label>
+            <input type="text" [(ngModel)]="newSite.adresse" placeholder="Ex: Zone industrielle, Tunis"/>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <textarea [(ngModel)]="newSite.description" rows="3" placeholder="Description du site..."></textarea>
+          </div>
           <div class="modal__actions">
             <button class="btn btn--outline" (click)="showSiteModal=false">Annuler</button>
             <button class="btn btn--primary" (click)="saveSite()">{{ editingSite ? '💾 Enregistrer' : '✅ Créer' }}</button>
@@ -907,7 +937,6 @@
         <div class="kpi-card kpi-card--indigo" (click)="navigate('zones')"><div class="kpi-card__icon">📍</div><div class="kpi-card__body"><span class="kpi-card__value">{{ zonesCount }}</span><span class="kpi-card__label">ZONES</span></div></div>
         <div class="kpi-card kpi-card--purple" (click)="navigate('equipements')"><div class="kpi-card__icon">⚙️</div><div class="kpi-card__body"><span class="kpi-card__value">{{ totalEquipements }}</span><span class="kpi-card__label">ÉQUIPEMENTS</span></div></div>
         <div class="kpi-card kpi-card--amber" (click)="navigate('mesures')"><div class="kpi-card__icon">🔧</div><div class="kpi-card__body"><span class="kpi-card__value">{{ totalMesures }}</span><span class="kpi-card__label">MESURES</span></div></div>
-        <!-- FIX: alertesActives dans le dashboard aussi -->
         <div class="kpi-card kpi-card--red" (click)="navigate('toutes-alertes')"><div class="kpi-card__icon">🔔</div><div class="kpi-card__body"><span class="kpi-card__value" [class.text--danger]="alertesActives > 0">{{ alertesActives }}</span><span class="kpi-card__label">ALERTES ACTIVES</span></div></div>
         <div class="kpi-card kpi-card--green"><div class="kpi-card__icon">⚡</div><div class="kpi-card__body"><span class="kpi-card__value">{{ consommationTotale }}</span><span class="kpi-card__label">CONSO. TOTALE</span></div></div>
         <div class="kpi-card kpi-card--cyan" (click)="navigate('energies')"><div class="kpi-card__icon">⚡</div><div class="kpi-card__body"><span class="kpi-card__value">{{ energies.length }}</span><span class="kpi-card__label">ÉNERGIES</span></div></div>
@@ -1044,7 +1073,7 @@
       </div>
     </section>
 
-    <!-- ══ MESURES ══ (CRUD COMPLET) -->
+    <!-- ══ MESURES ══ -->
     <section *ngIf="activeSection==='mesures'" class="page">
       <div class="page-banner">
         <div class="page-banner__chip">🔧 Relevés énergétiques</div>
@@ -1063,7 +1092,6 @@
         </div>
       </div>
 
-      <!-- Stats rapides mesures -->
       <div class="kpi-grid kpi-grid--4" style="margin-bottom:16px">
         <div class="stat-card stat-card--blue"><span class="stat-card__val">{{ totalMesures }}</span><span class="stat-card__lab">Total mesures</span></div>
         <div class="stat-card stat-card--indigo"><span class="stat-card__val">{{ consommationMoyenne }}</span><span class="stat-card__lab">Moyenne</span></div>
@@ -1135,14 +1163,13 @@
         </div>
       </div>
 
-      <!-- ══ MODAL MESURE (CRUD) ══ -->
+      <!-- MODAL MESURE -->
       <div class="modal-overlay" *ngIf="showMesureModal" (click)="showMesureModal=false">
         <div class="modal modal--lg" (click)="$event.stopPropagation()">
           <div class="modal__header">
             <h2>{{ editingMesure ? '✏️ Modifier la mesure' : '➕ Nouvelle mesure' }}</h2>
             <button class="modal__close" (click)="showMesureModal=false">✕</button>
           </div>
-
           <div class="modal__body">
             <div class="form-row-2">
               <div class="form-group">
@@ -1159,7 +1186,6 @@
                 </select>
               </div>
             </div>
-
             <div class="form-row-2">
               <div class="form-group">
                 <label>Date et heure *</label>
@@ -1170,7 +1196,6 @@
                 <input type="text" [(ngModel)]="newMesure.sourceDonnee" placeholder="Ex: Capteur IoT, Manuel, API…"/>
               </div>
             </div>
-
             <div class="form-group">
               <label>Équipement associé (optionnel)</label>
               <select [(ngModel)]="newMesure.equipementId">
@@ -1180,8 +1205,6 @@
                 </option>
               </select>
             </div>
-
-            <!-- Aperçu niveau si valeur renseignée -->
             <div class="mesure-preview" *ngIf="newMesure.valeur !== undefined && newMesure.valeur !== null">
               <span class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em">Aperçu niveau</span>
               <div class="mesure-preview__row">
@@ -1195,7 +1218,6 @@
               </div>
             </div>
           </div>
-
           <div class="modal__actions">
             <button class="btn btn--outline" (click)="showMesureModal=false">Annuler</button>
             <button class="btn btn--primary" (click)="saveMesure()">
@@ -1212,7 +1234,6 @@
         <div class="page-banner__header">
           <div>
             <h1 class="page-banner__title">Toutes les <span class="text--danger">alertes</span></h1>
-            <!-- FIX: alertesActives (getter robuste) -->
             <p class="page-banner__sub">{{ alertesActives }} active(s) · {{ alertesResolues }} résolue(s) · {{ alertes.length }} total</p>
           </div>
           <div class="page-banner__actions">
@@ -1268,7 +1289,6 @@
               <td><strong>{{ a.type }}</strong></td>
               <td class="muted">{{ a.message }}</td>
               <td>
-                <!-- FIX: utilise les helpers pour normaliser le statut -->
                 <span class="chip" [class]="(a.statut || '').toLowerCase().includes('active') || (a.statut || '').toLowerCase().includes('actif') ? 'chip--red' : 'chip--green'">
                   {{ a.statut }}
                 </span>
