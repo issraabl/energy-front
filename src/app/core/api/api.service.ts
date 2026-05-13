@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Observable, of } from 'rxjs';
-import { timeout, catchError, switchMap } from 'rxjs/operators';
+import { Observable, of, throwError } from 'rxjs';
+import { timeout, catchError, switchMap, tap } from 'rxjs/operators';
 
 import {
   Mesure, Alerte, Anomalie, Recommandation,
@@ -31,16 +31,32 @@ export class ApiService {
     );
   }
 
+  /**
+   * POST — propage l'erreur brute pour que l'appelant puisse afficher
+   * un message précis (status HTTP, message backend, etc.)
+   */
   private post<T>(path: string, body: any): Observable<T> {
-    return this.http.post<T>(`${this.BASE}/${path}`, body, { headers: this.getHeaders() });
+    return this.http.post<T>(`${this.BASE}/${path}`, body, { headers: this.getHeaders() }).pipe(
+      tap({ error: err => console.error(`POST /${path}`, err) })
+    );
   }
 
+  /**
+   * PUT — idem, propage l'erreur brute.
+   */
   private put<T>(path: string, body: any): Observable<T> {
-    return this.http.put<T>(`${this.BASE}/${path}`, body, { headers: this.getHeaders() });
+    return this.http.put<T>(`${this.BASE}/${path}`, body, { headers: this.getHeaders() }).pipe(
+      tap({ error: err => console.error(`PUT /${path}`, err) })
+    );
   }
 
+  /**
+   * DELETE — idem, propage l'erreur brute.
+   */
   private delete<T>(path: string): Observable<T> {
-    return this.http.delete<T>(`${this.BASE}/${path}`, { headers: this.getHeaders() });
+    return this.http.delete<T>(`${this.BASE}/${path}`, { headers: this.getHeaders() }).pipe(
+      tap({ error: err => console.error(`DELETE /${path}`, err) })
+    );
   }
 
   private getHeaders(): HttpHeaders {
@@ -63,7 +79,16 @@ export class ApiService {
       `${this.BASE}/Mesures?energieId=${energieId}`,
       { headers: this.getHeaders() }
     ).pipe(
-      catchError(err => { console.error('GET Mesures by energie', err); return of([]); })
+      catchError(err => { console.error('GET Mesures by energieId', err); return of([]); })
+    );
+  }
+
+  getMesuresByEnergieNom(nom: string): Observable<Mesure[]> {
+    return this.http.get<Mesure[]>(
+      `${this.BASE}/Mesures/byEnergie/${encodeURIComponent(nom)}`,
+      { headers: this.getHeaders() }
+    ).pipe(
+      catchError(err => { console.error(`GET Mesures/byEnergie/${nom}`, err); return of([]); })
     );
   }
 
@@ -72,12 +97,7 @@ export class ApiService {
   deleteMesure(id: number): Observable<any>              { return this.delete(`Mesures/${id}`); }
 
   // ════════════════════════════════════════════
-  // SEUILS — alignés sur SeuilController.cs
-  // GET    /api/seuil              → tous les seuils
-  // GET    /api/seuil/energie/{id} → seuil d'une énergie
-  // POST   /api/seuil              → créer  { energieId, valeur, periode }
-  // PUT    /api/seuil/energie/{id} → modifier { energieId, valeur, periode }
-  // DELETE /api/seuil/energie/{id} → supprimer
+  // SEUILS
   // ════════════════════════════════════════════
 
   getSeuils(): Observable<any[]> {
@@ -95,8 +115,23 @@ export class ApiService {
     );
   }
 
+  getSeuilByEnergieNom(nom: string): Observable<any | null> {
+    return this.getEnergieByNom(nom).pipe(
+      switchMap(energie => {
+        if (!energie) {
+          console.warn(`getSeuilByEnergieNom: aucune énergie trouvée pour '${nom}'`);
+          return of(null);
+        }
+        return this.getSeuilByEnergie(energie.idEnergie);
+      }),
+      catchError(err => { console.error(`getSeuilByEnergieNom(${nom})`, err); return of(null); })
+    );
+  }
+
   createSeuil(dto: { energieId: number; valeur: number; periode: string }): Observable<any> {
-    return this.http.post<any>(`${this.BASE}/seuil`, dto, { headers: this.getHeaders() });
+    return this.http.post<any>(`${this.BASE}/seuil`, dto, { headers: this.getHeaders() }).pipe(
+      tap({ error: err => console.error('POST /seuil', err) })
+    );
   }
 
   updateSeuil(
@@ -107,24 +142,17 @@ export class ApiService {
       `${this.BASE}/seuil/energie/${energieId}`,
       dto,
       { headers: this.getHeaders() }
+    ).pipe(
+      tap({ error: err => console.error(`PUT /seuil/energie/${energieId}`, err) })
     );
   }
 
-  /**
-   * Upsert intelligent :
-   *   - vérifie si un seuil existe déjà pour cette énergie
-   *   - si oui  → PUT  /seuil/energie/{id}
-   *   - si non  → POST /seuil
-   * Utiliser cette méthode dans le composant pour éviter les erreurs 409/404.
-   */
   upsertSeuil(dto: { energieId: number; valeur: number; periode: string }): Observable<any> {
     return this.getSeuilByEnergie(dto.energieId).pipe(
       switchMap(existing => {
         if (existing && (existing.idSeuil || existing.IdSeuil)) {
-          // seuil existant → mise à jour
           return this.updateSeuil(dto.energieId, dto);
         }
-        // aucun seuil → création
         return this.createSeuil(dto);
       })
     );
@@ -134,6 +162,8 @@ export class ApiService {
     return this.http.delete<any>(
       `${this.BASE}/seuil/energie/${energieId}`,
       { headers: this.getHeaders() }
+    ).pipe(
+      tap({ error: err => console.error(`DELETE /seuil/energie/${energieId}`, err) })
     );
   }
 
@@ -211,8 +241,17 @@ export class ApiService {
   // ENERGIES
   // ════════════════════════════════════════════
 
-  getEnergies(): Observable<Energie[]>                { return this.get<Energie>('Energies'); }
-  getEnergie(id: number): Observable<Energie | null>  { return this.getOne<Energie>(`Energies/${id}`); }
+  getEnergies(): Observable<Energie[]> { return this.get<Energie>('Energies'); }
+  getEnergie(id: number): Observable<Energie | null> { return this.getOne<Energie>(`Energies/${id}`); }
+
+  getEnergieByNom(nom: string): Observable<Energie | null> {
+    return this.http.get<Energie>(
+      `${this.BASE}/Energies/byNom/${encodeURIComponent(nom)}`,
+      { headers: this.getHeaders() }
+    ).pipe(
+      catchError(err => { console.error(`GET Energies/byNom/${nom}`, err); return of(null); })
+    );
+  }
 
   // ════════════════════════════════════════════
   // RAPPORTS
@@ -225,8 +264,8 @@ export class ApiService {
   // ANALYSE ENERGETIQUE
   // ════════════════════════════════════════════
 
-  getAnalyses(): Observable<AnalyseEnergetique[]>                   { return this.get<AnalyseEnergetique>('AnalyseEnergetique'); }
-  createAnalyse(dto: any): Observable<AnalyseEnergetique>           { return this.post<AnalyseEnergetique>('AnalyseEnergetique', dto); }
+  getAnalyses(): Observable<AnalyseEnergetique[]>         { return this.get<AnalyseEnergetique>('AnalyseEnergetique'); }
+  createAnalyse(dto: any): Observable<AnalyseEnergetique> { return this.post<AnalyseEnergetique>('AnalyseEnergetique', dto); }
 
   // ════════════════════════════════════════════
   // NOTIFICATIONS

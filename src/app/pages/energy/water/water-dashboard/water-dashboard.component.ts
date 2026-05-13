@@ -93,11 +93,10 @@ const ENERGIE_EAU_ID    = 3;
 const TOAST_DURATION_MS = 4_000;
 const PAGE_SIZE         = 10;
 const TARIF_DT_PAR_M3   = 0.85;
-
-const CHART_W     = 800;
-const CHART_H     = 220;
-const CHART_PAD_X = 48;
-const CHART_PAD_Y = 16;
+const CHART_W           = 800;
+const CHART_H           = 220;
+const CHART_PAD_X       = 48;
+const CHART_PAD_Y       = 16;
 
 // ── Composant ──────────────────────────────────────────────────────────────────
 
@@ -111,24 +110,23 @@ const CHART_PAD_Y = 16;
 export class WaterDashboardComponent implements OnInit, OnDestroy {
 
   // ── Config énergie ───────────────────────────────
-  readonly energieId    = ENERGIE_EAU_ID;
+  readonly energieId    = ENERGIE_EAU_ID;   // 3
   readonly energieLabel = 'Eau';
   readonly energieIcon  = '💧';
   readonly energieUnite = 'm³';
   readonly tarifUnite   = TARIF_DT_PAR_M3;
+  readonly energieNom   = 'eau';            // utilisé dans le payload POST/PUT
 
-  // ── Constantes chart (accessibles dans le template) ──
+  // ── Constantes chart accessibles dans le template ──
   readonly CHART_W     = CHART_W;
   readonly CHART_H     = CHART_H;
   readonly CHART_PAD_X = CHART_PAD_X;
   readonly CHART_PAD_Y = CHART_PAD_Y;
 
   // ── État utilisateur ─────────────────────────────
-  currentUser = this.auth.getCurrentUser();
-  canWrite    = false;
-  canRead     = false;
-
-  // ── Nav ──────────────────────────────────────────
+  currentUser  = this.auth.getCurrentUser();
+  canWrite     = false;
+  canRead      = false;
   navCollapsed = false;
 
   // ── Chargement ───────────────────────────────────
@@ -149,21 +147,19 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   alertesApi:       Alerte[]         = [];
   recommandations:  Recommandation[] = [];
 
-  // ── Tarif ────────────────────────────────────────
   tarifEau = TARIF_DT_PAR_M3;
 
   // ── Tabs ─────────────────────────────────────────
   activeTab: 'mesures' | 'seuils' | 'anomalies' | 'alertes' | 'recommandations' | 'analyse' | 'rapports' = 'mesures';
 
   // ── Chart ────────────────────────────────────────
-  chartType:   'ligne' | 'barres'    = 'ligne';
-  chartPeriod: '7j' | '30j' | '90j' = '30j';
-  hoveredPoint: ChartPoint | null    = null;
-
-  chartPoints:    ChartPoint[]  = [];
-  barChartData:   ChartPoint[]  = [];
-  yAxisLabels:    YAxisLabel[]  = [];
-  visibleXLabels: XAxisLabel[]  = [];
+  chartType:    'ligne' | 'barres'    = 'ligne';
+  chartPeriod:  '7j' | '30j' | '90j' = '30j';
+  hoveredPoint: ChartPoint | null     = null;
+  chartPoints:    ChartPoint[] = [];
+  barChartData:   ChartPoint[] = [];
+  yAxisLabels:    YAxisLabel[] = [];
+  visibleXLabels: XAxisLabel[] = [];
   linePath = '';
   areaPath = '';
 
@@ -206,17 +202,16 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   deleteSaving           = false;
 
   showDeleteSeuilConfirm = false;
-  seuilToDelete:  Seuil | null   = null;
+  seuilToDelete:   Seuil | null  = null;
   deleteSeuilSaving      = false;
 
   showDeleteAlerteConfirm = false;
-  alerteToDelete: Alerte | null  = null;
+  alerteToDelete:  Alerte | null = null;
 
   // ── Toasts ───────────────────────────────────────
   toasts: ToastMsg[]   = [];
   private toastCounter = 0;
 
-  // ── Seuil alerte ─────────────────────────────────
   seuilAlerte = 0;
 
   // ── IA ───────────────────────────────────────────
@@ -227,13 +222,12 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   iaChatLoading = false;
   iaChatInput   = '';
 
-  // ── Comparaison de périodes ──────────────────────
+  // ── Comparaison ──────────────────────────────────
   comparePeriode:        'mois' | 'trimestre' | 'annee' = 'mois';
   statPeriodeCourante:   StatPeriode | null = null;
   statPeriodePrecedente: StatPeriode | null = null;
   variationConsommation  = 0;
 
-  // ── Lifecycle ────────────────────────────────────
   private readonly destroy$ = new Subject<void>();
 
   constructor(
@@ -257,20 +251,16 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
     clearInterval(this.clockInterval);
   }
 
-  // ══ Horloge ══════════════════════════════════════
-
   private startClock(): void {
     this.clockInterval = setInterval(() => { this.currentTime = new Date(); }, 1000);
   }
 
-  // ══ Formulaires ══════════════════════════════════
-
   private initForms(): void {
+    // Pas de energieId dans le form — injecté manuellement dans le payload saveMesure()
     this.mesureForm = this.fb.group({
       valeur:       ['', [Validators.required, Validators.min(0)]],
       dateMesure:   [this.nowIso(), Validators.required],
       sourceDonnee: ['Saisie manuelle', Validators.required],
-      energieId:    [this.energieId],
       equipementId: [''],
       commentaire:  [''],
     });
@@ -293,17 +283,19 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
     this.mesureForm.reset({
       valeur: '', dateMesure: this.nowIso(),
       sourceDonnee: 'Saisie manuelle',
-      energieId: this.energieId, equipementId: '', commentaire: '',
+      equipementId: '', commentaire: '',
     });
   }
 
-  // ══ Chargement des données ════════════════════════
+  // ══ Chargement ════════════════════════════════════
 
   loadData(): void {
     this.loading     = true;
     this.hasApiError = false;
-    let pending      = 5;
 
+    // pending = 5 : mesures + équipements + énergies + seuils + alertes
+    // anomalies & recommandations sont non-bloquants
+    let pending = 5;
     const done = () => {
       if (--pending === 0) {
         this.loading = false;
@@ -314,6 +306,9 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
       }
     };
 
+    // ✅ FIX PRINCIPAL : getMesuresByEnergie(id) → GET /Mesures?energieId=3
+    // C'est la seule route confirmée dans api.service.ts
+    // getMesuresByEnergieNom() appelle /Mesures/byEnergie/eau qui n'existe pas → retourne [] silencieusement
     this.api.getMesuresByEnergie(this.energieId)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -343,21 +338,18 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (data: any) => {
           const raw   = Array.isArray(data) ? data : data ? [data] : [];
-          this.seuils = raw.map(s => this.normalizeSeuil(s));
+          this.seuils = raw.map((s: any) => this.normalizeSeuil(s));
           done();
         },
         error: () => {
-          this.api.getSeuils()
-            .pipe(takeUntil(this.destroy$))
-            .subscribe({
-              next: (data: any[]) => {
-                this.seuils = data
-                  .map(s => this.normalizeSeuil(s))
-                  .filter(s => s.energieId === this.energieId);
-                done();
-              },
-              error: () => { this.seuils = []; done(); },
-            });
+          this.api.getSeuils().pipe(takeUntil(this.destroy$)).subscribe({
+            next: (data: any[]) => {
+              this.seuils = data.map(s => this.normalizeSeuil(s))
+                                .filter(s => s.energieId === this.energieId);
+              done();
+            },
+            error: () => { this.seuils = []; done(); },
+          });
         },
       });
 
@@ -366,20 +358,19 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (data: any[]) => {
           this.alertesApi = (data as Alerte[]).filter(a =>
-            (a as any).energieId == null || (a as any).energieId === this.energieId
-          );
+            (a as any).energieId == null || (a as any).energieId === this.energieId);
           done();
         },
         error: () => { this.alertesApi = []; done(); },
       });
 
+    // Non-bloquants
     this.api.getAnomalies()
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (data: any[]) => {
           this.anomaliesApi = (data as AnomalieApi[]).filter(a =>
-            (a as any).energieId == null || (a as any).energieId === this.energieId
-          );
+            (a as any).energieId == null || (a as any).energieId === this.energieId);
         },
         error: () => { this.anomaliesApi = []; },
       });
@@ -389,29 +380,25 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (data: any[]) => {
           this.recommandations = (data as Recommandation[]).filter(r =>
-            (r as any).energieId == null || (r as any).energieId === this.energieId
-          );
+            (r as any).energieId == null || (r as any).energieId === this.energieId);
         },
         error: () => { this.recommandations = []; },
       });
   }
 
   private loadMesuresFallback(done: () => void): void {
-    this.api.getMesures()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (data: any[]) => {
-          this.mesures = data
-            .map(m => this.normalizeMesure(m))
-            .filter(m => Number(m.energieId) === this.energieId);
-          done();
-        },
-        error: () => {
-          this.hasApiError = true;
-          this.showToast('Erreur lors du chargement des mesures.', 'error');
-          done();
-        },
-      });
+    this.api.getMesures().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (data: any[]) => {
+        this.mesures = data.map(m => this.normalizeMesure(m))
+                           .filter(m => Number(m.energieId) === this.energieId);
+        done();
+      },
+      error: () => {
+        this.hasApiError = true;
+        this.showToast('Erreur lors du chargement des mesures.', 'error');
+        done();
+      },
+    });
   }
 
   // ══ KPIs ══════════════════════════════════════════
@@ -419,24 +406,17 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   get totalConsommation(): number {
     return this.round(this.mesures.reduce((s, m) => s + m.valeur, 0));
   }
-
   get moyenneMesures(): number {
     return this.mesures.length ? this.round(this.totalConsommation / this.mesures.length) : 0;
   }
-
   get maxMesure(): number {
     return this.mesures.length ? this.round(Math.max(...this.mesures.map(m => m.valeur))) : 0;
   }
-
   get minMesure(): number {
     return this.mesures.length ? this.round(Math.min(...this.mesures.map(m => m.valeur))) : 0;
   }
-
   get totalMesures(): number { return this.mesures.length; }
-
-  get coutTotal(): number {
-    return this.round(this.totalConsommation * this.tarifEau, 2);
-  }
+  get coutTotal():    number { return this.round(this.totalConsommation * this.tarifEau, 2); }
 
   get economiePotentielle(): number {
     if (!this.seuilAlerte || this.totalConsommation <= this.seuilAlerte) return 0;
@@ -476,11 +456,12 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
 
   get tendance(): 'up' | 'down' | 'stable' {
     if (this.mesures.length < 2) return 'stable';
-    const sorted = [...this.mesures].sort((a, b) =>
-      new Date(a.dateMesure).getTime() - new Date(b.dateMesure).getTime());
+    const sorted = [...this.mesures].sort(
+      (a, b) => new Date(a.dateMesure).getTime() - new Date(b.dateMesure).getTime());
     const mid  = Math.floor(sorted.length / 2);
     const avg  = (arr: Mesure[]) => arr.reduce((s, m) => s + m.valeur, 0) / arr.length;
-    const diff = ((avg(sorted.slice(mid)) - avg(sorted.slice(0, mid))) / (avg(sorted.slice(0, mid)) || 1)) * 100;
+    const diff = ((avg(sorted.slice(mid)) - avg(sorted.slice(0, mid))) /
+                  (avg(sorted.slice(0, mid)) || 1)) * 100;
     return diff > 5 ? 'up' : diff < -5 ? 'down' : 'stable';
   }
 
@@ -492,16 +473,14 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
     return this.anomaliesLocales.filter(a => !a.resolu).length
          + this.anomaliesApi.filter(a => !a.resolu).length;
   }
-
-  get alertesActives():    number { return this.alertesApi.filter(a => !a.traite).length; }
-  get notifNonLues():      number { return this.anomaliesCount + this.alertesActives; }
+  get alertesActives():   number { return this.alertesApi.filter(a => !a.traite).length; }
+  get notifNonLues():     number { return this.anomaliesCount + this.alertesActives; }
 
   get recommandationsEnCours():   Recommandation[] { return this.recommandations.filter(r => !r.applique); }
   get recommandationsAppliques(): Recommandation[] { return this.recommandations.filter(r => r.applique); }
 
   private updateSeuilAlerte(): void {
-    const mensuel    = this.seuils.find(s => s.periode === 'Mensuel');
-    this.seuilAlerte = mensuel?.valeur ?? 0;
+    this.seuilAlerte = this.seuils.find(s => s.periode === 'Mensuel')?.valeur ?? 0;
   }
 
   isAboveThreshold(valeur: number): boolean {
@@ -514,9 +493,7 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
       .filter(m => m.valeur > this.seuilAlerte)
       .map(m => ({
         description: `Consommation de ${m.valeur} m³ dépasse le seuil de ${this.seuilAlerte} m³`,
-        valeur:      m.valeur,
-        date:        m.dateMesure,
-        resolu:      false,
+        valeur: m.valeur, date: m.dateMesure, resolu: false,
       }));
   }
 
@@ -525,26 +502,22 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
     this.showToast('Anomalie marquée comme résolue.', 'success');
   }
 
-  // ══ Filtres & pagination mesures ══════════════════
+  // ══ Filtres & pagination ══════════════════════════
 
   onFilterChange(): void { this.mesurePage = 1; }
 
   get filteredMesures(): Mesure[] {
     let list = [...this.mesures];
-
-    const q = this.searchMesure.trim().toLowerCase();
+    const q  = this.searchMesure.trim().toLowerCase();
     if (q) {
       list = list.filter(m =>
         m.sourceDonnee.toLowerCase().includes(q) ||
         String(m.valeur).includes(q) ||
         (m.equipement?.nom ?? this.getEquipNom(m.equipementId)).toLowerCase().includes(q) ||
-        (m.commentaire ?? '').toLowerCase().includes(q),
-      );
+        (m.commentaire ?? '').toLowerCase().includes(q));
     }
-
     if (this.filterSource) list = list.filter(m => m.sourceDonnee === this.filterSource);
     if (this.filterEquip)  list = list.filter(m => String(m.equipementId) === String(this.filterEquip));
-
     list.sort((a, b) => {
       switch (this.sortBy) {
         case 'date_asc':  return new Date(a.dateMesure).getTime() - new Date(b.dateMesure).getTime();
@@ -553,7 +526,6 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
         default:          return new Date(b.dateMesure).getTime() - new Date(a.dateMesure).getTime();
       }
     });
-
     return list;
   }
 
@@ -565,17 +537,14 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   get mesureTotalPages(): number {
     return Math.max(1, Math.ceil(this.filteredMesures.length / this.mesurePerPage));
   }
-
   get mesurePages(): number[] {
     return Array.from({ length: this.mesureTotalPages }, (_, i) => i + 1);
   }
 
-  // ══ Filtres alertes ═══════════════════════════════
-
   get filteredAlertes(): Alerte[] {
     let list = [...this.alertesApi];
     if (this.filterAlerteSeverite) list = list.filter(a => a.severite === this.filterAlerteSeverite);
-    if (this.filterAlerteTraite === 'oui') list = list.filter(a => a.traite);
+    if (this.filterAlerteTraite === 'oui') list = list.filter(a =>  a.traite);
     if (this.filterAlerteTraite === 'non') list = list.filter(a => !a.traite);
     return list;
   }
@@ -587,10 +556,8 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   buildChart(): void {
     const now  = Date.now();
     const days = this.chartPeriod === '7j' ? 7 : this.chartPeriod === '30j' ? 30 : 90;
-    const ms   = days * 24 * 3600 * 1000;
-
     const filtered = this.mesures
-      .filter(m => now - new Date(m.dateMesure).getTime() <= ms)
+      .filter(m => now - new Date(m.dateMesure).getTime() <= days * 24 * 3600 * 1000)
       .sort((a, b) => new Date(a.dateMesure).getTime() - new Date(b.dateMesure).getTime());
 
     if (!filtered.length) {
@@ -606,9 +573,8 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
     const range   = maxV - minV || 1;
     const usableW = CHART_W - 2 * CHART_PAD_X;
     const usableH = CHART_H - 2 * CHART_PAD_Y;
-
-    const toX = (i: number) => CHART_PAD_X + (i / Math.max(filtered.length - 1, 1)) * usableW;
-    const toY = (v: number) => CHART_PAD_Y + usableH - ((v - minV) / range) * usableH;
+    const toX     = (i: number) => CHART_PAD_X + (i / Math.max(filtered.length - 1, 1)) * usableW;
+    const toY     = (v: number) => CHART_PAD_Y + usableH - ((v - minV) / range) * usableH;
 
     this.chartPoints = filtered.map((m, i) => ({
       x: toX(i), y: toY(m.valeur),
@@ -620,7 +586,8 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
       const pts    = this.chartPoints;
       const bottom = CHART_PAD_Y + usableH;
       this.linePath = 'M ' + pts.map(p => `${p.x},${p.y}`).join(' L ');
-      this.areaPath = `M ${pts[0].x},${bottom} ` +
+      this.areaPath =
+        `M ${pts[0].x},${bottom} ` +
         pts.map(p => `L ${p.x},${p.y}`).join(' ') +
         ` L ${pts[pts.length - 1].x},${bottom} Z`;
     }
@@ -654,91 +621,54 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   }
 
   openAddSeuilModal(): void {
-    this.editingSeuil = null;
-    this.seuilSaved   = false;
+    this.editingSeuil = null; this.seuilSaved = false;
     this.seuilForm.reset({ periode: 'Mensuel', valeur: '' });
     this.showSeuilModal = true;
   }
 
   openEditSeuil(s: Seuil): void {
-    this.editingSeuil = s;
-    this.seuilSaved   = false;
+    this.editingSeuil = s; this.seuilSaved = false;
     this.seuilForm.patchValue({ periode: s.periode, valeur: s.valeur });
     this.showSeuilModal = true;
   }
 
-  /**
-   * Enregistrement du seuil.
-   *
-   * CORRECTION PRINCIPALE :
-   *   - En mode édition  → PUT  /seuil/energie/{energieId}   (comportement précédent conservé)
-   *   - En mode création → upsertSeuil() qui vérifie d'abord si un seuil existe
-   *     déjà côté backend (GET /seuil/energie/{id}) avant de choisir POST ou PUT.
-   *     Cela évite le 409 / 500 quand le backend a une contrainte unique sur energieId.
-   */
   saveSeuil(): void {
     if (this.seuilForm.invalid) { this.seuilForm.markAllAsTouched(); return; }
-
     this.seuilSaving = true;
-
     const formVal = this.seuilForm.value;
-    const payload = {
-      energieId: this.energieId,
-      valeur:    +formVal.valeur,
-      periode:   formVal.periode as string,
-    };
-
-    // Mode édition : PUT direct sur la ressource existante
-    const obs = this.editingSeuil
+    const payload = { energieId: this.energieId, valeur: +formVal.valeur, periode: formVal.periode as string };
+    const obs     = this.editingSeuil
       ? this.api.updateSeuil(this.editingSeuil.energieId, payload)
-      // Mode création : upsert (GET → POST ou PUT selon l'existence)
       : this.api.upsertSeuil(payload);
-
     obs.pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
-        this.seuilSaving = false;
-        this.seuilSaved  = true;
+        this.seuilSaving = false; this.seuilSaved = true;
         this.showToast('Seuil enregistré avec succès !', 'success');
-        setTimeout(() => {
-          this.showSeuilModal = false;
-          this.editingSeuil   = null;
-        }, 800);
+        setTimeout(() => { this.showSeuilModal = false; this.editingSeuil = null; }, 800);
         this.loadData();
       },
       error: (err: any) => {
         this.seuilSaving = false;
-        // Affiche le détail HTTP si disponible pour faciliter le debug
         const detail = err?.error?.message ?? err?.message ?? '';
-        const msg    = detail
-          ? `Erreur lors de l'enregistrement du seuil : ${detail}`
-          : 'Erreur lors de l\'enregistrement du seuil.';
-        this.showToast(msg, 'error');
+        this.showToast(`Erreur seuil : ${detail || 'enregistrement impossible'}`, 'error');
         console.error('[saveSeuil]', err);
       },
     });
   }
 
-  confirmDeleteSeuil(s: Seuil): void {
-    this.seuilToDelete          = s;
-    this.showDeleteSeuilConfirm = true;
-  }
+  confirmDeleteSeuil(s: Seuil): void { this.seuilToDelete = s; this.showDeleteSeuilConfirm = true; }
 
   deleteSeuil(): void {
     if (!this.seuilToDelete) return;
     this.deleteSeuilSaving = true;
-
-    // Suppression côté backend puis mise à jour locale
     this.api.deleteSeuilByEnergie(this.seuilToDelete.energieId)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
           this.seuils = this.seuils.filter(s => s.idSeuil !== this.seuilToDelete!.idSeuil);
-          this.deleteSeuilSaving      = false;
-          this.showDeleteSeuilConfirm = false;
-          this.seuilToDelete          = null;
+          this.deleteSeuilSaving = false; this.showDeleteSeuilConfirm = false; this.seuilToDelete = null;
           this.showToast('Seuil supprimé.', 'success');
-          this.updateSeuilAlerte();
-          this.detectAnomaliesLocales();
+          this.updateSeuilAlerte(); this.detectAnomaliesLocales();
         },
         error: () => {
           this.deleteSeuilSaving = false;
@@ -750,76 +680,69 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   // ══ Alertes ════════════════════════════════════════
 
   openAddAlerte(): void {
-    this.editingAlerte = null;
-    this.alerteSaved   = false;
-    this.alerteForm.reset({
-      type: 'Consommation élevée', severite: 'Normale',
-      seuil: '', message: '', equipementId: '',
-    });
+    this.editingAlerte = null; this.alerteSaved = false;
+    this.alerteForm.reset({ type: 'Consommation élevée', severite: 'Normale', seuil: '', message: '', equipementId: '' });
     this.showAlerteModal = true;
   }
 
   openEditAlerte(a: Alerte): void {
-    this.editingAlerte = a;
-    this.alerteSaved   = false;
-    this.alerteForm.patchValue({
-      type: a.type, severite: a.severite,
-      seuil: a.seuil, message: a.message,
-      equipementId: a.equipementId ?? '',
-    });
+    this.editingAlerte = a; this.alerteSaved = false;
+    this.alerteForm.patchValue({ type: a.type, severite: a.severite, seuil: a.seuil, message: a.message, equipementId: a.equipementId ?? '' });
     this.showAlerteModal = true;
   }
 
   saveAlerte(): void {
     if (this.alerteForm.invalid) { this.alerteForm.markAllAsTouched(); return; }
     this.alerteSaving = true;
-    const payload     = { ...this.alerteForm.value, energieId: this.energieId };
-    const obs         = this.editingAlerte
+    const raw     = this.alerteForm.value;
+    const payload = {
+      ...raw,
+      energieId:    this.energieId,
+      seuil:        +raw.seuil,
+      equipementId: raw.equipementId !== '' ? +raw.equipementId : null,
+    };
+    const obs = this.editingAlerte
       ? this.api.updateAlerte(this.editingAlerte.idAlerte, payload)
       : this.api.createAlerte(payload);
-
     obs.pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
-        this.alerteSaving = false;
-        this.alerteSaved  = true;
+        this.alerteSaving = false; this.alerteSaved = true;
         this.showToast(this.editingAlerte ? 'Alerte modifiée !' : 'Alerte créée !', 'success');
         setTimeout(() => { this.showAlerteModal = false; this.editingAlerte = null; }, 800);
         this.loadData();
       },
-      error: () => {
+      error: (err: any) => {
         this.alerteSaving = false;
-        this.showToast('Erreur lors de l\'enregistrement.', 'error');
+        const detail = err?.error?.message ?? err?.error ?? err?.message ?? '';
+        this.showToast(`Erreur ${err?.status} : ${detail || 'enregistrement impossible'}`, 'error');
+        console.error('[saveAlerte]', err);
       },
     });
   }
 
   traiterAlerte(a: Alerte): void {
-    this.api.updateAlerte(a.idAlerte, { ...a, traite: true })
-      .pipe(takeUntil(this.destroy$))
+    this.api.updateAlerte(a.idAlerte, { ...a, traite: true }).pipe(takeUntil(this.destroy$))
       .subscribe({
         next:  () => { a.traite = true; this.showToast('Alerte marquée comme traitée.', 'success'); },
         error: () => { a.traite = true; },
       });
   }
 
-  confirmDeleteAlerte(a: Alerte): void {
-    this.alerteToDelete          = a;
-    this.showDeleteAlerteConfirm = true;
-  }
+  confirmDeleteAlerte(a: Alerte): void { this.alerteToDelete = a; this.showDeleteAlerteConfirm = true; }
 
   deleteAlerte(): void {
     if (!this.alerteToDelete) return;
-    this.api.deleteAlerte(this.alerteToDelete.idAlerte)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.showDeleteAlerteConfirm = false;
-          this.alerteToDelete          = null;
-          this.showToast('Alerte supprimée.', 'success');
-          this.loadData();
-        },
-        error: () => this.showToast('Erreur lors de la suppression.', 'error'),
-      });
+    this.api.deleteAlerte(this.alerteToDelete.idAlerte).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.showDeleteAlerteConfirm = false; this.alerteToDelete = null;
+        this.showToast('Alerte supprimée.', 'success'); this.loadData();
+      },
+      error: (err: any) => {
+        const detail = err?.error?.message ?? err?.message ?? '';
+        this.showToast(`Erreur ${err?.status} : ${detail || 'suppression impossible'}`, 'error');
+        console.error('[deleteAlerte]', err);
+      },
+    });
   }
 
   exportAlertes(): void {
@@ -833,20 +756,16 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   // ══ Mesures ════════════════════════════════════════
 
   openAddMesure(): void {
-    this.editingMesure = null;
-    this.mesureSaved   = false;
-    this.resetMesureForm();
-    this.showMesureModal = true;
+    this.editingMesure = null; this.mesureSaved = false;
+    this.resetMesureForm(); this.showMesureModal = true;
   }
 
   openEditMesure(m: Mesure): void {
-    this.editingMesure = m;
-    this.mesureSaved   = false;
+    this.editingMesure = m; this.mesureSaved = false;
     this.mesureForm.patchValue({
       valeur:       m.valeur,
       dateMesure:   m.dateMesure?.slice(0, 16) ?? this.nowIso(),
       sourceDonnee: m.sourceDonnee,
-      energieId:    m.energieId,
       equipementId: m.equipementId ?? '',
       commentaire:  m.commentaire ?? '',
     });
@@ -860,22 +779,35 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
     if (this.mesureForm.invalid) { this.mesureForm.markAllAsTouched(); return; }
 
     this.mesureSaving = true;
-    const payload     = { ...this.mesureForm.value, energieId: this.energieId };
-    const obs         = this.editingMesure
+    const raw = this.mesureForm.value;
+
+    // ✅ Le backend MesureCreateDto attend energieNom (string) pour POST/PUT
+    const payload = {
+      energieNom:   this.energieNom,   // 'eau'
+      valeur:       +raw.valeur,
+      dateMesure:   raw.dateMesure,
+      sourceDonnee: raw.sourceDonnee,
+      equipementId: raw.equipementId !== '' && raw.equipementId != null
+                      ? +raw.equipementId : null,
+      commentaire:  raw.commentaire ?? '',
+    };
+
+    const obs = this.editingMesure
       ? this.api.updateMesure(this.editingMesure.idMesure, payload)
-      : this.api.createMesure(payload);
+      : this.api.createMesure(payload as any);
 
     obs.pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
-        this.mesureSaving = false;
-        this.mesureSaved  = true;
+        this.mesureSaving = false; this.mesureSaved = true;
         this.showToast(this.editingMesure ? 'Mesure modifiée !' : 'Mesure enregistrée !', 'success');
         setTimeout(() => { this.showMesureModal = false; this.editingMesure = null; }, 900);
         this.loadData();
       },
-      error: () => {
+      error: (err: any) => {
         this.mesureSaving = false;
-        this.showToast('Erreur lors de l\'enregistrement.', 'error');
+        const detail = err?.error?.message ?? err?.error ?? err?.message ?? '';
+        this.showToast(`Erreur ${err?.status} : ${detail || 'enregistrement impossible'}`, 'error');
+        console.error('[saveMesure] payload :', payload, 'err :', err);
       },
     });
   }
@@ -885,21 +817,18 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   deleteMesure(): void {
     if (!this.mesureToDelete) return;
     this.deleteSaving = true;
-    this.api.deleteMesure(this.mesureToDelete.idMesure)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.deleteSaving         = false;
-          this.showDeleteConfirm    = false;
-          this.mesureToDelete       = null;
-          this.showToast('Mesure supprimée.', 'success');
-          this.loadData();
-        },
-        error: () => {
-          this.deleteSaving = false;
-          this.showToast('Erreur lors de la suppression.', 'error');
-        },
-      });
+    this.api.deleteMesure(this.mesureToDelete.idMesure).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.deleteSaving = false; this.showDeleteConfirm = false; this.mesureToDelete = null;
+        this.showToast('Mesure supprimée.', 'success'); this.loadData();
+      },
+      error: (err: any) => {
+        this.deleteSaving = false;
+        const detail = err?.error?.message ?? err?.message ?? '';
+        this.showToast(`Erreur ${err?.status} : ${detail || 'suppression impossible'}`, 'error');
+        console.error('[deleteMesure]', err);
+      },
+    });
   }
 
   exportCSV(): void {
@@ -917,8 +846,7 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
     this.showToast('Recommandation marquée comme appliquée.', 'success');
     if (r.idReco != null) {
       this.api.updateRecommandation(r.idReco, { ...r, applique: true })
-        .pipe(takeUntil(this.destroy$))
-        .subscribe({ error: () => {} });
+        .pipe(takeUntil(this.destroy$)).subscribe({ error: () => {} });
     }
   }
 
@@ -927,16 +855,10 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   toggleIaChat(): void { this.showIaChat = !this.showIaChat; }
 
   lancerAnalyseIA(): void {
-    this.iaLoading = true;
-    this.iaAnalyse = '';
-
+    this.iaLoading = true; this.iaAnalyse = '';
     this.api.ollamaAnalyse({
-      totalMesures: this.totalMesures,
-      moyenne:      this.moyenneMesures,
-      max:          this.maxMesure,
-      alertes:      this.alertesActives,
-      anomalies:    this.anomaliesCount,
-      tendance:     this.tendance,
+      totalMesures: this.totalMesures, moyenne: this.moyenneMesures, max: this.maxMesure,
+      alertes: this.alertesActives, anomalies: this.anomaliesCount, tendance: this.tendance,
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next:  res => { this.iaLoading = false; this.iaAnalyse = res.response; },
       error: () => {
@@ -955,39 +877,27 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   envoyerIaChat(): void {
     if (!this.iaChatInput.trim() || this.iaChatLoading) return;
     const question     = this.iaChatInput.trim();
-    this.iaChatInput   = '';
-    this.iaChatLoading = true;
-    this.iaChat        = '';
-
+    this.iaChatInput   = ''; this.iaChatLoading = true; this.iaChat = '';
     const prompt =
       `Contexte eau WICMIC — Total : ${this.totalConsommation} m³, ` +
-      `Moyenne : ${this.moyenneMesures} m³, Tendance : ${this.tendanceLabel}.\n` +
-      `Question : ${question}`;
-
-    this.api.ollamaChat(prompt)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next:  res => { this.iaChatLoading = false; this.iaChat = res.response; },
-        error: () => { this.iaChatLoading = false; this.iaChat = 'Service IA indisponible. Veuillez réessayer.'; },
-      });
+      `Moyenne : ${this.moyenneMesures} m³, Tendance : ${this.tendanceLabel}.\nQuestion : ${question}`;
+    this.api.ollamaChat(prompt).pipe(takeUntil(this.destroy$)).subscribe({
+      next:  res => { this.iaChatLoading = false; this.iaChat = res.response; },
+      error: () => { this.iaChatLoading = false; this.iaChat = 'Service IA indisponible. Veuillez réessayer.'; },
+    });
   }
 
-  // ══ Comparaison de périodes ════════════════════════
+  // ══ Comparaison ════════════════════════════════════
 
   computeComparaison(): void {
     const now = new Date();
-
     const getRange = (decalage: number): { debut: Date; fin: Date; label: string } => {
       switch (this.comparePeriode) {
         case 'trimestre': {
           const q    = Math.floor(now.getMonth() / 3) - decalage;
           const year = now.getFullYear() + Math.floor(q / 4);
           const qi   = ((q % 4) + 4) % 4;
-          return {
-            debut:  new Date(year, qi * 3, 1),
-            fin:    new Date(year, qi * 3 + 3, 0, 23, 59, 59),
-            label: `T${qi + 1} ${year}`,
-          };
+          return { debut: new Date(year, qi * 3, 1), fin: new Date(year, qi * 3 + 3, 0, 23, 59, 59), label: `T${qi + 1} ${year}` };
         }
         case 'annee': {
           const y = now.getFullYear() - decalage;
@@ -1005,18 +915,18 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
         }
       }
     };
-
-    const stat = (range: { debut: Date; fin: Date; label: string }): StatPeriode => {
-      const ms    = this.mesures.filter(m => { const d = new Date(m.dateMesure); return d >= range.debut && d <= range.fin; });
+    const stat = (r: { debut: Date; fin: Date; label: string }): StatPeriode => {
+      const ms    = this.mesures.filter(m => { const d = new Date(m.dateMesure); return d >= r.debut && d <= r.fin; });
       const total = this.round(ms.reduce((s, m) => s + m.valeur, 0));
-      return { label: range.label, total, nbMesures: ms.length, cout: this.round(total * this.tarifEau, 2) };
+      return { label: r.label, total, nbMesures: ms.length, cout: this.round(total * this.tarifEau, 2) };
     };
-
     this.statPeriodeCourante   = stat(getRange(0));
     this.statPeriodePrecedente = stat(getRange(1));
-    this.variationConsommation = this.statPeriodePrecedente.total > 0
-      ? Math.round(((this.statPeriodeCourante.total - this.statPeriodePrecedente.total) / this.statPeriodePrecedente.total) * 100)
-      : this.statPeriodeCourante.total > 0 ? 100 : 0;
+    this.variationConsommation =
+      this.statPeriodePrecedente.total > 0
+        ? Math.round(((this.statPeriodeCourante.total - this.statPeriodePrecedente.total) /
+                       this.statPeriodePrecedente.total) * 100)
+        : this.statPeriodeCourante.total > 0 ? 100 : 0;
   }
 
   // ══ Rapports ══════════════════════════════════════
@@ -1024,41 +934,30 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
   telechargerRapport(type: string): void {
     const date = new Date().toLocaleDateString('fr-FR');
     switch (type) {
-      case 'mensuel': {
-        const txt = [
+      case 'mensuel':
+        this.downloadFile([
           `RAPPORT MENSUEL EAU — ${date}`, '='.repeat(50),
           `Consommation totale  : ${this.totalConsommation} m³`,
           `Mesures ce mois      : ${this.mesuresMoisCourant}`,
           `Coût estimé          : ${this.coutTotal} DT`,
           `Tendance             : ${this.tendanceLabel}`,
           `Anomalies actives    : ${this.anomaliesCount}`,
-        ].join('\n');
-        this.downloadFile(txt, 'rapport-mensuel-eau.txt', 'text/plain');
-        break;
-      }
+        ].join('\n'), 'rapport-mensuel-eau.txt', 'text/plain'); break;
       case 'csv':     this.exportCSV(); break;
       case 'alertes': this.exportAlertes(); break;
-      case 'anomalies': {
-        const txt = [
+      case 'anomalies':
+        this.downloadFile([
           `RAPPORT ANOMALIES EAU — ${date}`, '='.repeat(50),
-          ...this.anomaliesLocales.map(a =>
-            `[${a.resolu ? 'RÉSOLU' : 'ACTIF'}] ${a.description} | ${a.valeur} m³`),
-        ].join('\n');
-        this.downloadFile(txt, 'rapport-anomalies-eau.txt', 'text/plain');
-        break;
-      }
-      case 'recommandations': {
-        const txt = [
+          ...this.anomaliesLocales.map(a => `[${a.resolu ? 'RÉSOLU' : 'ACTIF'}] ${a.description} | ${a.valeur} m³`),
+        ].join('\n'), 'rapport-anomalies-eau.txt', 'text/plain'); break;
+      case 'recommandations':
+        this.downloadFile([
           `RAPPORT RECOMMANDATIONS EAU — ${date}`, '='.repeat(50),
           ...this.recommandations.map(r =>
-            `[${r.applique ? 'APPLIQUÉ' : 'EN ATTENTE'}] (${r.priorite}) ${r.texte} — Économie : ${r.economieEstimee ?? '—'} DT`
-          ),
-        ].join('\n');
-        this.downloadFile(txt, 'rapport-recommandations-eau.txt', 'text/plain');
-        break;
-      }
-      default: {
-        const txt = [
+            `[${r.applique ? 'APPLIQUÉ' : 'EN ATTENTE'}] (${r.priorite}) ${r.texte} — Économie : ${r.economieEstimee ?? '—'} DT`),
+        ].join('\n'), 'rapport-recommandations-eau.txt', 'text/plain'); break;
+      default:
+        this.downloadFile([
           `RAPPORT COMPLET EAU — ${date}`, '='.repeat(50),
           `Total mesures        : ${this.totalMesures}`,
           `Consommation totale  : ${this.totalConsommation} m³`,
@@ -1069,9 +968,7 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
           `Anomalies actives    : ${this.anomaliesCount}`,
           `Alertes actives      : ${this.alertesActives}`,
           `Économie potentielle : ${this.economiePotentielle} DT`,
-        ].join('\n');
-        this.downloadFile(txt, 'rapport-complet-eau.txt', 'text/plain');
-      }
+        ].join('\n'), 'rapport-complet-eau.txt', 'text/plain');
     }
     this.showToast('Rapport téléchargé avec succès.', 'success');
   }
@@ -1096,8 +993,6 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
 
   recalcCout(): void { /* coutTotal est un getter réactif */ }
 
-  // ══ Utilitaires publics ═══════════════════════════
-
   getEquipNom(id: number | null | undefined): string {
     if (id == null) return '—';
     return this.equipements.find(e => e.idEquipement === +id)?.nom ?? '—';
@@ -1115,17 +1010,11 @@ export class WaterDashboardComponent implements OnInit, OnDestroy {
 
   dismissToast(id: number): void { this.toasts = this.toasts.filter(t => t.id !== id); }
 
-  // ══ TrackBy ═══════════════════════════════════════
-
   trackById(_: number, item: Mesure): number          { return item.idMesure; }
   trackByEquipId(_: number, item: Equipement): number { return item.idEquipement; }
   trackByToastId(_: number, item: ToastMsg): number   { return item.id; }
 
-  // ══ Auth ══════════════════════════════════════════
-
   logout(): void { this.auth.logout(); }
-
-  // ══ Privés ════════════════════════════════════════
 
   private round(value: number, decimals = 1): number { return +value.toFixed(decimals); }
   private nowIso(): string { return new Date().toISOString().slice(0, 16); }

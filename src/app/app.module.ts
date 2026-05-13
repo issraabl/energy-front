@@ -1,7 +1,13 @@
-import { NgModule } from '@angular/core';
+import { NgModule, LOCALE_ID } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { ReactiveFormsModule, FormsModule } from '@angular/forms';
 import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
+
+// ── Locale française pour DatePipe ──────────────────────────────────────────
+import { registerLocaleData } from '@angular/common';
+import localeFr from '@angular/common/locales/fr';
+registerLocaleData(localeFr, 'fr');
+// ────────────────────────────────────────────────────────────────────────────
 
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
@@ -18,7 +24,7 @@ import { ForgotPasswordComponent } from './features/forgot-password/forgot-passw
     ReactiveFormsModule,
     FormsModule,
     HttpClientModule,
-    ForgotPasswordComponent  
+    ForgotPasswordComponent
   ],
   providers: [
     {
@@ -26,6 +32,8 @@ import { ForgotPasswordComponent } from './features/forgot-password/forgot-passw
       useClass: AuthInterceptor,
       multi: true,
     },
+    // Définit 'fr' comme locale globale pour tous les pipes Angular (DatePipe, CurrencyPipe…)
+    { provide: LOCALE_ID, useValue: 'fr' },
   ],
   bootstrap: [AppComponent],
 })

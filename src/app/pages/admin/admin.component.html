@@ -316,11 +316,7 @@
           </div>
         </div>
         <div class="sites-grid">
-
-          <!-- ✅ FIX: carte site avec affichage complet et fallbacks -->
           <div class="site-card" *ngFor="let s of filteredSites; trackBy: trackById">
-
-            <!-- En-tête : icône + boutons d'action -->
             <div class="site-card__header">
               <div class="site-card__icon-wrap">🏢</div>
               <div class="site-card__actions">
@@ -328,40 +324,26 @@
                 <button class="btn-icon btn-icon--danger" (click)="deleteSite(s.idSite)" title="Supprimer">🗑️</button>
               </div>
             </div>
-
-            <!-- ✅ Nom du site — fallback explicite si vide -->
             <h3 class="site-card__name">{{ s.nom && s.nom.trim() ? s.nom : '(Sans nom)' }}</h3>
-
-            <!-- ID du site -->
             <p class="site-card__id">#{{ s.idSite }}</p>
-
-            <!-- Adresse — affichée seulement si non vide -->
             <div class="site-card__meta" *ngIf="s.adresse && s.adresse.trim()">
               <span>📍</span>
               <span>{{ s.adresse }}</span>
             </div>
-
-            <!-- Description — affichée seulement si non vide -->
             <div class="site-card__meta" *ngIf="s.description && s.description.trim()">
               <span>📝</span>
               <span class="site-card__desc">{{ s.description }}</span>
             </div>
-
-            <!-- Pied de carte : badges zones + équipements -->
             <div class="site-card__footer">
               <span class="chip chip--blue">{{ getSiteZonesCount(s.idSite) }} zone(s)</span>
               <span class="chip chip--purple">{{ getSiteEquipCount(s.idSite) }} équip.</span>
             </div>
-
           </div>
-
-          <!-- État vide -->
           <div class="empty-state" *ngIf="filteredSites.length === 0">
             <span>🏢</span>
             <p>Aucun site trouvé</p>
             <button class="btn btn--primary" style="margin-top:10px" (click)="openNewSite()">+ Créer un site</button>
           </div>
-
         </div>
       </div>
 
@@ -1019,6 +1001,7 @@
     </section>
 
     <!-- ══ STATISTIQUES ══ -->
+    <!-- PATCH 4 applied: Excel button added alongside PDF in date-range actions -->
     <section *ngIf="activeSection==='statistiques'" class="page">
       <div class="page-banner">
         <div class="page-banner__chip">📊 Analytics</div>
@@ -1031,7 +1014,11 @@
             <div class="date-range__field"><label>DÉBUT</label><input type="date" [(ngModel)]="statsDebut"/></div>
             <div class="date-range__field"><label>FIN</label><input type="date" [(ngModel)]="statsFin"/></div>
             <button class="btn btn--primary" (click)="loadAllData()">▶ Appliquer</button>
+            <!-- PATCH 4: PDF + Excel buttons -->
             <button class="btn btn--outline-light" (click)="exportRapportPDF('Statistiques')" [disabled]="exportingPDF">📄 PDF</button>
+            <button class="btn btn--success" (click)="exportSyntheseExcel()" [disabled]="exportingExcel">
+              {{ exportingExcel ? '⏳…' : '📊 Excel' }}
+            </button>
           </div>
         </div>
       </div>
@@ -1099,7 +1086,19 @@
         <div class="stat-card stat-card--green"><span class="stat-card__val">{{ consommationMin }}</span><span class="stat-card__lab">Minimum</span></div>
       </div>
 
+      <!-- PATCH 1: Mesures toolbar with date filter + Excel export -->
       <div class="toolbar">
+        <!-- Date range filter -->
+        <div class="date-filter-bar">
+          <span class="date-filter-bar__label">📅 Période</span>
+          <input type="date" [(ngModel)]="mesureDateDebut" class="date-input" title="Du"/>
+          <span class="date-filter-bar__sep">→</span>
+          <input type="date" [(ngModel)]="mesureDateFin" class="date-input" title="Au"/>
+          <button class="btn btn--sm btn--outline" (click)="clearDateFilter('mesures')" title="Réinitialiser">✕</button>
+          <span class="search-bar__count" *ngIf="mesureDateDebut || mesureDateFin">{{ filteredMesures.length }} résultat(s)</span>
+        </div>
+
+        <!-- Search + sort -->
         <div class="search-bar" style="flex:1">
           <span>🔍</span>
           <input type="text" placeholder="Valeur, source, équipement, énergie..." [(ngModel)]="searchMesure" class="search-bar__input"/>
@@ -1112,7 +1111,9 @@
           <option>Valeur — décroissant</option>
         </select>
         <button class="btn btn--outline" (click)="reloadMesures()">🔄</button>
-        <button class="btn btn--success" (click)="exportMesuresCSV()">📊 CSV</button>
+        <button class="btn btn--success" (click)="exportMesuresExcel()" [disabled]="exportingExcel">
+          {{ exportingExcel ? '⏳…' : '📊 Excel' }}
+        </button>
         <button class="btn btn--primary" (click)="openNewMesure()">+ Ajouter</button>
       </div>
 
@@ -1253,7 +1254,18 @@
           <span>{{ santeSysteme }}%</span>
         </div>
       </div>
+
+      <!-- PATCH 2: Alertes toolbar with date filter + Excel export -->
       <div class="toolbar">
+        <!-- Date range filter -->
+        <div class="date-filter-bar">
+          <span class="date-filter-bar__label">📅 Période</span>
+          <input type="date" [(ngModel)]="alerteDateDebut" class="date-input" title="Du"/>
+          <span class="date-filter-bar__sep">→</span>
+          <input type="date" [(ngModel)]="alerteDateFin" class="date-input" title="Au"/>
+          <button class="btn btn--sm btn--outline" (click)="clearDateFilter('alertes')" title="Réinitialiser">✕</button>
+        </div>
+
         <div class="search-bar" style="flex:1">
           <span>🔍</span>
           <input type="text" placeholder="Type, message..." [(ngModel)]="searchAlerte" class="search-bar__input"/>
@@ -1263,7 +1275,11 @@
           <button [class.active]="filtreAlerte==='Actives'" (click)="filtreAlerte='Actives'">● Actives ({{ alertesActives }})</button>
           <button [class.active]="filtreAlerte==='Résolues'" (click)="filtreAlerte='Résolues'">✅ Résolues ({{ alertesResolues }})</button>
         </div>
+        <button class="btn btn--success" (click)="exportAlertesExcel()" [disabled]="exportingExcel">
+          {{ exportingExcel ? '⏳…' : '📊 Excel' }}
+        </button>
       </div>
+
       <div class="card empty-state--card" *ngIf="filteredAlertes.length === 0">
         <span>🔍</span><h3>Aucun résultat</h3><p class="muted">Modifiez votre recherche ou le filtre.</p>
       </div>
@@ -1354,7 +1370,7 @@
       <div class="page-banner">
         <div class="page-banner__chip">📋 Synthèse & Exports</div>
         <h1 class="page-banner__title">Rapports <span class="text--cyan">énergétiques</span></h1>
-        <p class="page-banner__sub">Exportez vos données en PDF ou CSV · {{ mesures.length }} mesures disponibles</p>
+        <p class="page-banner__sub">Exportez vos données en PDF ou Excel · {{ mesures.length }} mesures disponibles</p>
       </div>
       <div class="kpi-grid kpi-grid--5">
         <div class="stat-card stat-card--gray"><span class="stat-card__val">{{ mesures.length }}</span><span class="stat-card__lab">MESURES</span></div>
@@ -1392,25 +1408,46 @@
           </div>
         </div>
       </div>
+
+      <!-- PATCH 3: Replaced CSV section with Excel multi-sheet export -->
       <div class="card">
-        <div class="card__header"><span class="card__title">📊 Export CSV</span></div>
-        <p class="card__sub">Données brutes compatibles Excel / Google Sheets</p>
+        <div class="card__header">
+          <span class="card__title">📊 Export Excel (.xlsx)</span>
+          <div class="loading-indicator" *ngIf="exportingExcel">
+            <div class="mini-spinner"></div><span>Génération en cours…</span>
+          </div>
+        </div>
+        <p class="card__sub">Données structurées compatibles Excel / Google Sheets — multi-feuilles</p>
         <div class="export-grid">
-          <div class="export-item export-item--csv" (click)="exportRapportCSV('mesures')">
-            <span class="export-item__icon">🔧</span><span class="export-item__title">CSV Mesures</span>
-            <span class="export-item__desc muted">{{ mesures.length }} relevés</span><span class="export-item__dl">↓ CSV</span>
+          <div class="export-item export-item--excel" (click)="exportSyntheseExcel()" [class.disabled]="exportingExcel">
+            <span class="export-item__icon">📋</span>
+            <span class="export-item__title">Rapport complet</span>
+            <span class="export-item__desc muted">Synthèse + Mesures + Alertes + Sites (4 feuilles)</span>
+            <span class="export-item__dl">↓ XLSX</span>
           </div>
-          <div class="export-item export-item--csv" (click)="exportRapportCSV('synthese')">
-            <span class="export-item__icon">📊</span><span class="export-item__title">CSV Synthèse</span>
-            <span class="export-item__desc muted">Indicateurs clés</span><span class="export-item__dl">↓ CSV</span>
+          <div class="export-item export-item--excel" (click)="exportMesuresExcel()" [class.disabled]="exportingExcel">
+            <span class="export-item__icon">🔧</span>
+            <span class="export-item__title">Excel Mesures</span>
+            <span class="export-item__desc muted">{{ mesures.length }} relevés (filtrés par date si actif)</span>
+            <span class="export-item__dl">↓ XLSX</span>
           </div>
-          <div class="export-item export-item--csv" (click)="exportCSV()">
-            <span class="export-item__icon">🏭</span><span class="export-item__title">CSV Équipements</span>
-            <span class="export-item__desc muted">{{ totalEquipements }} équipements</span><span class="export-item__dl">↓ CSV</span>
+          <div class="export-item export-item--excel" (click)="exportAlertesExcel()" [class.disabled]="exportingExcel">
+            <span class="export-item__icon">🔔</span>
+            <span class="export-item__title">Excel Alertes</span>
+            <span class="export-item__desc muted">{{ alertes.length }} alertes</span>
+            <span class="export-item__dl">↓ XLSX</span>
           </div>
-          <div class="export-item export-item--csv" (click)="exportEnergiesCSV()">
-            <span class="export-item__icon">⚡</span><span class="export-item__title">CSV Énergies</span>
-            <span class="export-item__desc muted">{{ energies.length }} types d'énergie</span><span class="export-item__dl">↓ CSV</span>
+          <div class="export-item export-item--excel" (click)="exportEquipementsExcel()" [class.disabled]="exportingExcel">
+            <span class="export-item__icon">🏭</span>
+            <span class="export-item__title">Excel Équipements</span>
+            <span class="export-item__desc muted">{{ totalEquipements }} équipements</span>
+            <span class="export-item__dl">↓ XLSX</span>
+          </div>
+          <div class="export-item export-item--excel" (click)="exportEnergiesExcel()" [class.disabled]="exportingExcel">
+            <span class="export-item__icon">⚡</span>
+            <span class="export-item__title">Excel Énergies</span>
+            <span class="export-item__desc muted">{{ energies.length }} types d'énergie</span>
+            <span class="export-item__dl">↓ XLSX</span>
           </div>
         </div>
       </div>

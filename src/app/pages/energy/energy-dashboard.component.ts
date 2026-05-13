@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewChecked, ElementRef, ViewChild, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import {
@@ -64,6 +64,17 @@ interface AnomalieExt {
 
 interface SparkSeries { energieId: number; points: number[]; }
 
+// ─── Noms canoniques des énergies ────────────────────────────────────────────
+const NOM_ELECTRICITE = 'Electricité';
+const NOM_EAU         = 'Eau';
+const NOM_GAZOIL      = 'Gazoil';
+
+const TARIFS_PAR_NOM: Record<string, number> = {
+  [NOM_ELECTRICITE]: 0.28,
+  [NOM_EAU]:         0.85,
+  [NOM_GAZOIL]:      2.10,
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 @Component({
@@ -103,6 +114,11 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
 
   // ── Goal targets ─────────────────────────────────────────────────────────
   objectifReductionPct = 10;
+
+  // ── Date filter ───────────────────────────────────────────────────────────
+  dateFilterFrom  = '';
+  dateFilterTo    = '';
+  dateQuickPeriod = '';
 
   // ── Modals ─────────────────────────────────────────────────────────────────
   showMesureModal     = false; mesureForm!:     FormGroup; mesureSaving     = false; mesureSaved     = false;
@@ -153,7 +169,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
 
   // ── Heatmap ────────────────────────────────────────────────────────────────
   offHoursMode   = false;
-  heatmapEnergie = '1';
+  heatmapEnergie = '';
   heatmapHovered: { day: number; hour: number; val: number } | null = null;
   heatmapData: number[][] = []; heatmapDays: string[] = []; heatmapHourLabels: string[] = [];
 
@@ -186,6 +202,28 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   ) {}
 
   // ══════════════════════════════════════════════════════════════════════════
+  // ✅ Résolution des IDs par nom
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private getIdByNom(nom: string): number {
+    return this.energies.find(
+      e => (e.nom ?? '').toLowerCase().trim() === nom.toLowerCase().trim()
+    )?.idEnergie ?? 0;
+  }
+
+  get idElec():   number { return this.getIdByNom(NOM_ELECTRICITE); }
+  get idEau():    number { return this.getIdByNom(NOM_EAU); }
+  get idGazoil(): number { return this.getIdByNom(NOM_GAZOIL); }
+
+  private getTarifById(energieId: number): number {
+    const nom = this.getEnergieNom(energieId);
+    const key = Object.keys(TARIFS_PAR_NOM).find(
+      k => k.toLowerCase().trim() === nom.toLowerCase().trim()
+    );
+    return key ? TARIFS_PAR_NOM[key] : this.tarifKwh;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Lifecycle
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -209,6 +247,239 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   get nowIso():      string  { return new Date().toISOString().slice(0, 16); }
   get todayDate():   string  { return new Date().toISOString().slice(0, 10); }
   get currentYear(): number  { return new Date().getFullYear(); }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ✅ Filtre global par date
+  // ══════════════════════════════════════════════════════════════════════════
+
+  onDateFilterChange(): void {
+    this.dateQuickPeriod = '';
+  }
+
+  setDateQuick(period: string): void {
+    this.dateQuickPeriod = period;
+    const today = new Date();
+    const toStr = today.toISOString().slice(0, 10);
+    if (period === 'all') {
+      this.dateFilterFrom = '';
+      this.dateFilterTo   = '';
+      return;
+    }
+    this.dateFilterTo = toStr;
+    if (period === '7j') {
+      const from = new Date(today); from.setDate(from.getDate() - 7);
+      this.dateFilterFrom = from.toISOString().slice(0, 10);
+    } else if (period === '30j') {
+      const from = new Date(today); from.setDate(from.getDate() - 30);
+      this.dateFilterFrom = from.toISOString().slice(0, 10);
+    } else if (period === '90j') {
+      const from = new Date(today); from.setDate(from.getDate() - 90);
+      this.dateFilterFrom = from.toISOString().slice(0, 10);
+    } else if (period === 'ytd') {
+      this.dateFilterFrom = `${today.getFullYear()}-01-01`;
+    }
+  }
+
+  resetDateFilter(): void {
+    this.dateFilterFrom  = '';
+    this.dateFilterTo    = '';
+    this.dateQuickPeriod = '';
+  }
+
+  /** Mesures filtrées par la plage de dates globale */
+  get mesuresFiltreesParDate(): Mesure[] {
+    return this.mesures.filter(m => {
+      const d = new Date(m.dateMesure);
+      if (this.dateFilterFrom && d < new Date(this.dateFilterFrom)) return false;
+      if (this.dateFilterTo   && d > new Date(this.dateFilterTo + 'T23:59:59')) return false;
+      return true;
+    });
+  }
+
+  /** Alertes filtrées par la plage de dates globale */
+  get alertesFiltreesParDate(): AlerteExt[] {
+    return this.alertes.filter(a => {
+      const d = new Date(a.dateCreation);
+      if (this.dateFilterFrom && d < new Date(this.dateFilterFrom)) return false;
+      if (this.dateFilterTo   && d > new Date(this.dateFilterTo + 'T23:59:59')) return false;
+      return true;
+    });
+  }
+
+  /** Label lisible de la plage sélectionnée */
+  get dateRangeLabel(): string {
+    if (!this.dateFilterFrom && !this.dateFilterTo) return 'Toutes les données';
+    const fmt = (s: string) => new Date(s).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+    if (this.dateFilterFrom && this.dateFilterTo) return `${fmt(this.dateFilterFrom)} → ${fmt(this.dateFilterTo)}`;
+    if (this.dateFilterFrom) return `Depuis le ${fmt(this.dateFilterFrom)}`;
+    return `Jusqu'au ${fmt(this.dateFilterTo)}`;
+  }
+
+  /** Coût total sur la période filtrée */
+  get coutPeriodeFiltree(): number {
+    return +(this.mesuresFiltreesParDate
+      .reduce((s, m) => s + m.valeur * this.getTarifById(Number(m.energieId)), 0)
+    ).toFixed(2);
+  }
+
+  /** Statistiques sur la période filtrée */
+  get moyenneMesuresFiltrees(): number {
+    const mf = this.mesuresFiltreesParDate;
+    if (!mf.length) return 0;
+    return +(mf.reduce((s, m) => s + m.valeur, 0) / mf.length).toFixed(1);
+  }
+
+  get maxMesureFiltre(): number {
+    const mf = this.mesuresFiltreesParDate;
+    return mf.length ? +Math.max(...mf.map(m => m.valeur)).toFixed(1) : 0;
+  }
+
+  get minMesureFiltre(): number {
+    const mf = this.mesuresFiltreesParDate;
+    return mf.length ? +Math.min(...mf.map(m => m.valeur)).toFixed(1) : 0;
+  }
+
+  /** Total pour une énergie sur la période filtrée */
+  getEnergieTotalFiltre(energieId: number): number {
+    return +(this.mesuresFiltreesParDate
+      .filter(m => Number(m.energieId) === Number(energieId))
+      .reduce((s, m) => s + m.valeur, 0)
+    ).toFixed(1);
+  }
+
+  /** % pour une énergie sur la période filtrée */
+  getEnergiePctFiltre(energieId: number): number {
+    const total = this.mesuresFiltreesParDate.reduce((s, m) => s + m.valeur, 0) || 1;
+    return Math.round((this.getEnergieTotalFiltre(energieId) / total) * 100);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ✅ Exports Excel (XLSX via SheetJS-style CSV avec extension .xlsx)
+  //    ou export CSV simple renommé .xlsx selon l'environnement.
+  //    Pour un vrai XLSX, remplacer par la lib xlsx/exceljs.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /** Export rapport principal (mesures filtrées) */
+  exportRapportExcel(): void {
+    const headers = ['ID','Date','Valeur','Unité','Énergie','Équipement','Source','Commentaire','Coût (DT)'];
+    const rows = this.mesuresFiltreesParDate.map(m => [
+      m.idMesure,
+      new Date(m.dateMesure).toLocaleString('fr-FR'),
+      m.valeur,
+      this.getEnergieUnite(Number(m.energieId)),
+      this.getEnergieNom(Number(m.energieId)),
+      m.equipement?.nom || '—',
+      m.sourceDonnee,
+      m.commentaire || '',
+      (m.valeur * this.getTarifById(Number(m.energieId))).toFixed(2),
+    ]);
+    const summary = [
+      [],
+      ['RÉSUMÉ'],
+      ['Période', this.dateRangeLabel],
+      ['Nombre de mesures', this.mesuresFiltreesParDate.length],
+      ['Coût total (DT)', this.coutPeriodeFiltree],
+      ['Moyenne', this.moyenneMesuresFiltrees],
+      ['Maximum', this.maxMesureFiltre],
+      ['Minimum', this.minMesureFiltre],
+      ['Score efficacité', `${this.efficiencyScore}/100 (${this.efficiencyGrade})`],
+    ];
+    const csv = [[...headers], ...rows, ...summary].map(r => r.join(';')).join('\n');
+    this.download('\uFEFF' + csv, `rapport_mesures_wicmic_${new Date().toISOString().slice(0,10)}.xlsx`, 'text/csv');
+    this.showToast('Export Excel rapport téléchargé.', 'success');
+  }
+
+  /** Export brut des mesures filtrées */
+  exportMesuresExcel(): void {
+    const headers = ['ID','Date','Valeur','Unité','Énergie','Équipement','Source','Commentaire'];
+    const rows = this.mesuresFiltreesParDate.map(m => [
+      m.idMesure,
+      new Date(m.dateMesure).toLocaleString('fr-FR'),
+      m.valeur,
+      this.getEnergieUnite(Number(m.energieId)),
+      this.getEnergieNom(Number(m.energieId)),
+      m.equipement?.nom || '—',
+      m.sourceDonnee,
+      m.commentaire || '',
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
+    this.download('\uFEFF' + csv, `mesures_brut_wicmic_${new Date().toISOString().slice(0,10)}.xlsx`, 'text/csv');
+    this.showToast('Export mesures Excel téléchargé.', 'success');
+  }
+
+  /** Export équipements */
+  exportEquipementsExcel(): void {
+    const headers = ['ID','Nom','Type','Statut','Puissance (kW)','Localisation','Énergie','Date installation','Âge','Nb mesures'];
+    const rows = this.equipements.map(e => [
+      e.idEquipement,
+      e.nom,
+      e.typeEquipement,
+      e.statut || 'Actif',
+      e.puissance || '—',
+      e.localisation || e.zone?.nom || '—',
+      e.energie?.nom || (e.energieId ? this.getEnergieNom(Number(e.energieId)) : '—'),
+      (e.dateMiseEnService || e.dateInstallation)
+        ? new Date((e.dateMiseEnService || e.dateInstallation)!).toLocaleDateString('fr-FR')
+        : '—',
+      this.getEquipAgeAns(e),
+      this.getMesuresForEquip(e),
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
+    this.download('\uFEFF' + csv, `equipements_wicmic_${new Date().toISOString().slice(0,10)}.xlsx`, 'text/csv');
+    this.showToast('Export équipements Excel téléchargé.', 'success');
+  }
+
+  /** Export alertes filtrées */
+  exportAlertesExcel(): void {
+    const headers = ['ID','Type','Sévérité','Message','Seuil','Source','Statut','Date'];
+    const rows = this.alertesFiltreesParDate.map(a => [
+      a.idAlerte,
+      a.type,
+      a.severite,
+      a.message,
+      a.seuil,
+      a.sourceAuto ? 'Auto' : 'Manuel',
+      a.traite ? 'Traitée' : 'Active',
+      new Date(a.dateCreation).toLocaleString('fr-FR'),
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
+    this.download('\uFEFF' + csv, `alertes_wicmic_${new Date().toISOString().slice(0,10)}.xlsx`, 'text/csv');
+    this.showToast('Export alertes Excel téléchargé.', 'success');
+  }
+
+  /** Export benchmark */
+  exportBenchmarkExcel(): void {
+    const headers = ['Énergie','Unité','Mois courant','Mois précédent','Variation (%)','Position','Insight'];
+    const rows = this.benchmarkData.map(b => [
+      b.energie, b.unite, b.moisActuel, b.moisPrecedent,
+      b.moisPrecedent > 0 ? b.variation : '—',
+      b.position === 'better' ? 'Baisse' : b.position === 'same' ? 'Stable' : 'Hausse',
+      b.insight,
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
+    this.download('\uFEFF' + csv, `benchmark_wicmic_${new Date().toISOString().slice(0,10)}.xlsx`, 'text/csv');
+    this.showToast('Export benchmark Excel téléchargé.', 'success');
+  }
+
+  /** Export prévisions IA */
+  exportPrevisionsExcel(): void {
+    const headers = ['Énergie','Valeur prévue','Unité','Tendance','Variation (%)','Fiabilité (%)'];
+    const rows = [
+      [NOM_ELECTRICITE, this.previsionMoisProchain.elec, this.getEnergieUnite(this.idElec),
+       this.previsionMoisProchain.elecTrend, this.previsionMoisProchain.elecVar, this.previsionMoisProchain.fiabilite],
+      [NOM_EAU,         this.previsionMoisProchain.eau,    this.getEnergieUnite(this.idEau),    'flat', '—', this.previsionMoisProchain.fiabilite],
+      [NOM_GAZOIL,      this.previsionMoisProchain.gazoil, this.getEnergieUnite(this.idGazoil), 'flat', '—', this.previsionMoisProchain.fiabilite],
+    ];
+    const summary: (string|number)[][] = [
+      [],
+      ['Période de prévision', 'Mois prochain'],
+      ['Fiabilité globale (%)', this.previsionMoisProchain.fiabilite],
+      ['Généré le', new Date().toLocaleString('fr-FR')],
+    ];
+    const csv = [headers, ...rows, ...summary].map(r => r.join(';')).join('\n');
+    this.download('\uFEFF' + csv, `previsions_ia_wicmic_${new Date().toISOString().slice(0,10)}.xlsx`, 'text/csv');
+    this.showToast('Export prévisions Excel téléchargé.', 'success');
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // Permissions
@@ -288,7 +559,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   // Normalisation
   // ══════════════════════════════════════════════════════════════════════════
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private normalizeEnergie(e: any): Energie {
     return {
       idEnergie:    e.idEnergie    ?? e.IdEnergie    ?? 0,
@@ -298,7 +568,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     } as Energie;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private normalizeMesure(m: any): Mesure {
     const energieRaw   = m.energie    ?? m.Energie    ?? null;
     const equipRaw     = m.equipement ?? m.Equipement ?? null;
@@ -318,7 +587,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     } as Mesure;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private normalizeEquipement(e: any): Equipement {
     const energieRaw = e.energie ?? e.Energie ?? null;
     const energieId  = e.energieId ?? e.EnergieId ?? energieRaw?.idEnergie ?? energieRaw?.IdEnergie ?? null;
@@ -338,7 +606,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     } as Equipement;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private normalizeAlerte(a: any): AlerteExt {
     return {
       idAlerte:     a.idAlerte     ?? a.IdAlerte     ?? 0,
@@ -352,7 +619,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private normalizeAnomalie(a: any): AnomalieExt {
     const energieId  = a.energieId ?? a.EnergieId ?? null;
     const energieNom = energieId ? this.getEnergieNom(energieId) : (a.energieNom ?? a.EnergiNom ?? '');
@@ -423,13 +689,13 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  get seuilElec():   number { return this.seuilsList.find(s => s.energieId === 1)?.valeurCible ?? 0; }
-  get seuilGazoil(): number { return this.seuilsList.find(s => s.energieId === 2)?.valeurCible ?? 0; }
-  get seuilEau():    number { return this.seuilsList.find(s => s.energieId === 3)?.valeurCible ?? 0; }
+  get seuilElec():   number { return this.seuilsList.find(s => s.energieId === this.idElec)?.valeurCible ?? 0; }
+  get seuilGazoil(): number { return this.seuilsList.find(s => s.energieId === this.idGazoil)?.valeurCible ?? 0; }
+  get seuilEau():    number { return this.seuilsList.find(s => s.energieId === this.idEau)?.valeurCible ?? 0; }
 
-  get consommationElec():   number { return this.getEnergieTotal(1); }
-  get consommationGazoil(): number { return this.getEnergieTotal(2); }
-  get consommationEau():    number { return this.getEnergieTotal(3); }
+  get consommationElec():   number { return this.getEnergieTotal(this.idElec); }
+  get consommationGazoil(): number { return this.getEnergieTotal(this.idGazoil); }
+  get consommationEau():    number { return this.getEnergieTotal(this.idEau); }
 
   getSeuilPct(s: Seuil): number {
     if (!s.valeurCible) return 0;
@@ -609,7 +875,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     if (this.recoForm.invalid) { this.recoForm.markAllAsTouched(); return; }
     this.recoSaving = true;
     const v = this.recoForm.value;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newReco: any = { idRecommandation: Date.now(), titre: v.titre, description: v.description, priorite: v.priorite, economie: +v.economie || 0, applique: false, dateCreation: new Date().toISOString() };
     setTimeout(() => {
       this.recommandations = [newReco, ...this.recommandations];
@@ -644,12 +909,15 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   }
   get maxMesure(): number { return this.mesures.length ? +Math.max(...this.mesures.map(m => m.valeur)).toFixed(1) : 0; }
   get minMesure(): number { return this.mesures.length ? +Math.min(...this.mesures.map(m => m.valeur)).toFixed(1) : 0; }
-  get coutTotal(): number { return +(this.mesures.reduce((s, m) => s + m.valeur, 0) * this.tarifKwh).toFixed(2); }
+
+  get coutTotal(): number {
+    return +(this.mesures.reduce((s, m) => s + m.valeur * this.getTarifById(Number(m.energieId)), 0)).toFixed(2);
+  }
 
   get coutMoisCourant(): number {
     const now = new Date();
     const mois = this.mesures.filter(m => { const d = new Date(m.dateMesure); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); });
-    return +(mois.reduce((s, m) => s + m.valeur, 0) * this.tarifKwh).toFixed(2);
+    return +(mois.reduce((s, m) => s + m.valeur * this.getTarifById(Number(m.energieId)), 0)).toFixed(2);
   }
 
   get mesuresAujourd(): number {
@@ -735,10 +1003,11 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   getEnergieTotal(energieId: number): number {
     return +(this.mesures.filter(m => Number(m.energieId) === Number(energieId)).reduce((s, m) => s + (m.valeur ?? 0), 0).toFixed(1));
   }
+
   getEnergieCout(energieId: number): number {
-    const tarifs: Record<number, number> = { 1: this.tarifKwh, 2: 2.10, 3: 0.85 };
-    return +(this.getEnergieTotal(energieId) * (tarifs[energieId] ?? this.tarifKwh)).toFixed(2);
+    return +(this.getEnergieTotal(energieId) * this.getTarifById(energieId)).toFixed(2);
   }
+
   getEnergiePct(energieId: number): number {
     const total = this.mesures.reduce((s, m) => s + m.valeur, 0) || 1;
     return Math.round((this.getEnergieTotal(energieId) / total) * 100);
@@ -1023,7 +1292,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     this.showEquipementModal = true;
   }
 
-  // ✅ MÉTHODE CORRIGÉE
   saveEquipement(): void {
     if (this.equipementForm.invalid) { this.equipementForm.markAllAsTouched(); return; }
     this.equipementSaving = true;
@@ -1100,7 +1368,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   get alertesHautes():    number { return this.alertes.filter(a => !a.traite && a.severite === 'Haute').length; }
 
   get filteredAlertes(): AlerteExt[] {
-    let list = [...this.alertes];
+    let list = [...this.alertesFiltreesParDate];
     if (this.searchAlerte) { const q = this.searchAlerte.toLowerCase(); list = list.filter(a => a.message.toLowerCase().includes(q) || a.type.toLowerCase().includes(q)); }
     if (this.filterAlertType)     list = list.filter(a => a.type === this.filterAlertType);
     if (this.filterAlertSeverite) list = list.filter(a => a.severite === this.filterAlertSeverite);
@@ -1157,7 +1425,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   }
 
   get economiesTotales(): number {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this.recommandations.filter(r => r.applique).reduce((s, r) => s + ((r as any).economie ?? 0), 0);
   }
 
@@ -1175,10 +1442,10 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
 
   telechargerRapport(type: string): void {
     switch (type) {
-      case 'mensuel':     this.exportRapport(); break;
+      case 'mensuel':     this.exportRapportExcel(); break;
       case 'trimestriel': this.exportRapportTrimestriel(); break;
       case 'seuils':      this.exportRapportSeuils(); break;
-      case 'alertes':     this.exportRapportAlertes(); break;
+      case 'alertes':     this.exportAlertesExcel(); break;
       case 'anomalies':   this.exportRapportAnomalies(); break;
       case 'csv':         this.exportCSV(); break;
     }
@@ -1196,12 +1463,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     this.download(lines.join('\n'), `rapport_seuils.txt`, 'text/plain');
     this.showToast('Rapport seuils téléchargé.', 'success');
   }
-  private exportRapportAlertes(): void {
-    const headers = ['ID','Type','Message','Seuil','Sévérité','Source','Statut','Date'];
-    const rows = this.alertes.map(a => [a.idAlerte, a.type, a.message, a.seuil, a.severite, a.sourceAuto?'Auto':'Manuel', a.traite?'Traitée':'Active', new Date(a.dateCreation).toLocaleString('fr-FR')]);
-    this.download('\uFEFF' + [headers,...rows].map(r => r.join(';')).join('\n'), `rapport_alertes.csv`, 'text/csv');
-    this.showToast('Rapport alertes téléchargé.', 'success');
-  }
   private exportRapportAnomalies(): void {
     const headers = ['ID','Type','Description','Date','Énergie','Statut','Progression'];
     const rows = this.anomalies.map(a => [a.id, a.type||'Anomalie', a.description, new Date(a.dateDetection).toLocaleDateString('fr-FR'), a.energieNom||'—', a.resolu?'Résolue':'En cours', `${this.getProgress(a)}%`]);
@@ -1216,16 +1477,9 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     this.showToast('Export CSV téléchargé.', 'success');
   }
 
-  exportEquipementsCSV(): void {
-    const headers = ['ID','Nom','Type','Statut','Puissance (kW)','Localisation','Énergie','Date installation','Âge','Mesures'];
-    const rows = this.equipements.map(e => [e.idEquipement, e.nom, e.typeEquipement, e.statut||'Actif', e.puissance||'—', e.localisation||'—', e.energie?.nom||(e.energieId?this.getEnergieNom(e.energieId):'—'), (e.dateMiseEnService||e.dateInstallation)?new Date((e.dateMiseEnService||e.dateInstallation)!).toLocaleDateString('fr-FR'):'—', this.getEquipAgeAns(e), this.getMesuresForEquip(e)]);
-    this.download('\uFEFF' + [headers,...rows].map(r => r.join(';')).join('\n'), `equipements_wicmic_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv');
-    this.showToast('Export équipements CSV téléchargé.', 'success');
-  }
-
   exportRapport(): void {
     const sep = '═'.repeat(60); const sub = '─'.repeat(60);
-    const lines = ['WICMIC ENERGY — Rapport de consommation', sep, `Généré le : ${new Date().toLocaleString('fr-FR')}`, `Utilisateur : ${this.currentUser?.nom??'—'}`, sub, `Total mesures : ${this.totalMesures}`, `Moyenne : ${this.moyenneMesures}`, `Max : ${this.maxMesure}`, `Min : ${this.minMesure}`, `Coût ce mois : ${this.coutMoisCourant} DT`, `Coût total : ${this.coutTotal} DT`, `Tendance : ${this.tendance} (${this.tendancePct}%)`, sub, `Alertes actives : ${this.alertesNonTraitees} (${this.alertesCritiques} critiques)`, `Anomalies : ${this.anomaliesNonResolues} non résolues / ${this.anomalies.length}`, `Recommandations : ${this.recoAppliquees}/${this.totalRecommandations} appliquées`, sub, '── ÉNERGIES ──', ...this.energies.map(en => `${en.nom.padEnd(20)}: ${this.getEnergieTotal(en.idEnergie)} ${en.unite} — ${this.getEnergieCout(en.idEnergie)} DT (${this.getEnergiePct(en.idEnergie)}%)`), sub];
+    const lines = ['WICMIC ENERGY — Rapport de consommation', sep, `Généré le : ${new Date().toLocaleString('fr-FR')}`, `Utilisateur : ${this.currentUser?.nom??'—'}`, `Période : ${this.dateRangeLabel}`, sub, `Total mesures : ${this.mesuresFiltreesParDate.length}`, `Moyenne : ${this.moyenneMesuresFiltrees}`, `Max : ${this.maxMesureFiltre}`, `Min : ${this.minMesureFiltre}`, `Coût période : ${this.coutPeriodeFiltree} DT`, `Coût ce mois : ${this.coutMoisCourant} DT`, `Coût total : ${this.coutTotal} DT`, `Tendance : ${this.tendance} (${this.tendancePct}%)`, sub, `Alertes actives : ${this.alertesNonTraitees} (${this.alertesCritiques} critiques)`, `Anomalies : ${this.anomaliesNonResolues} non résolues / ${this.anomalies.length}`, `Recommandations : ${this.recoAppliquees}/${this.totalRecommandations} appliquées`, sub, '── ÉNERGIES ──', ...this.energies.map(en => `${en.nom.padEnd(20)}: ${this.getEnergieTotal(en.idEnergie)} ${en.unite} — ${this.getEnergieCout(en.idEnergie)} DT (${this.getEnergiePct(en.idEnergie)}%)`), sub];
     this.download(lines.join('\n'), `rapport_wicmic_${new Date().toISOString().slice(0,10)}.txt`, 'text/plain');
     this.showToast('Rapport exporté.', 'success');
   }
@@ -1254,7 +1508,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     if (!msg || this.chatLoading) return;
     this.messages.push({ role: 'user', content: msg, time: new Date() });
     this.chatInput = ''; this.chatLoading = true; this._scrollChat();
-    const ctx = [`Contexte WICMIC Energy :`, `- Mesures : ${this.totalMesures} | Moy : ${this.moyenneMesures} | Max : ${this.maxMesure}`, `- Coût mois : ${this.coutMoisCourant} DT | Total : ${this.coutTotal} DT`, `- Alertes actives : ${this.alertesNonTraitees} (${this.alertesCritiques} critiques)`, `- Anomalies : ${this.anomaliesNonResolues}/${this.anomalies.length}`, `- Équipements : ${this.equipementsActifs} actifs / ${this.equipements.length}`, `- Score efficacité : ${this.efficiencyScore}/100 (${this.efficiencyGrade})`, `- Tendance : ${this.tendance} (${this.tendancePct}%)`, `Question : ${msg}`].join('\n');
+    const ctx = [`Contexte WICMIC Energy :`, `- Mesures : ${this.totalMesures} | Moy : ${this.moyenneMesures} | Max : ${this.maxMesure}`, `- Coût mois : ${this.coutMoisCourant} DT | Total : ${this.coutTotal} DT`, `- Alertes actives : ${this.alertesNonTraitees} (${this.alertesCritiques} critiques)`, `- Anomalies : ${this.anomaliesNonResolues}/${this.anomalies.length}`, `- Équipements : ${this.equipementsActifs} actifs / ${this.equipements.length}`, `- Score efficacité : ${this.efficiencyScore}/100 (${this.efficiencyGrade})`, `- Tendance : ${this.tendance} (${this.tendancePct}%)`, `- Période filtrée : ${this.dateRangeLabel}`, `Question : ${msg}`].join('\n');
     this.api.ollamaChat(ctx).subscribe({
       next:  res => { this.messages.push({ role: 'assistant', content: res.response, time: new Date() }); this.chatLoading = false; this._scrollChat(); },
       error: ()  => { this.messages.push({ role: 'assistant', content: 'Service IA indisponible. Assurez-vous qu\'Ollama est démarré.', time: new Date() }); this.chatLoading = false; this._scrollChat(); },
@@ -1328,7 +1582,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   get hasRankTimelineData(): boolean { return this.rankTimeline.some(r => r.pct > 0); }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Prévisions IA
+  // Prévisions
   // ══════════════════════════════════════════════════════════════════════════
 
   recalculatePrevisions(): void { this.initPrevisions(); this.showToast('Prévisions recalculées.', 'success'); }
@@ -1344,7 +1598,12 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       const ssRes = pts.reduce((s, p) => s + Math.pow(p.y - (a * p.x + b), 2), 0);
       return { a, b, r2: ssTot > 0 ? Math.max(0, Math.min(1, 1 - ssRes / ssTot)) : 0 };
     };
+
     const now = new Date();
+    const idE = this.idElec;
+    const idW = this.idEau;
+    const idG = this.idGazoil;
+
     const getMP = (eid: number) => {
       const pts: {x: number; y: number}[] = [];
       for (let i = 11; i >= 0; i--) {
@@ -1355,7 +1614,11 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       }
       return pts;
     };
-    const ptE = getMP(1); const ptW = getMP(3); const ptG = getMP(2);
+
+    const ptE = idE ? getMP(idE) : [];
+    const ptW = idW ? getMP(idW) : [];
+    const ptG = idG ? getMP(idG) : [];
+
     const MIN = 3;
     if (ptE.length < MIN && ptW.length < MIN && ptG.length < MIN) {
       this.previsionMoisProchain = { elec: 0, eau: 0, gazoil: 0, fiabilite: 0, elecTrend: 'flat', elecVar: '0', hasEnoughData: false };
@@ -1375,9 +1638,13 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     const fid = tot >= 3 ? Math.round(((rE.r2*ptE.length + rW.r2*ptW.length + rG.r2*ptG.length) / Math.max(1,tot)) * 100) : 0;
     this.previsionMoisProchain = { elec: pE, eau: pW, gazoil: pG, fiabilite: Math.max(5, Math.min(99, fid)), elecTrend: pE > cE*1.03 ? 'up' : pE < cE*0.97 ? 'down' : 'flat', elecVar: String(varE), hasEnoughData: true };
     this.previsionRecos = [];
-    if (ptE.length >= 2 && rE.a > 0)  this.previsionRecos.push({ titre: 'Tendance électricité en hausse', description: `+${rE.a.toFixed(1)} kWh/mois sur ${ptE.length} mois. Fiabilité : ${Math.round(rE.r2*100)}%.`, economie: Math.max(0, Math.round(rE.a*0.28*12)), urgence: rE.a > 50 ? 'haute' : 'normale' });
-    else if (ptE.length >= 2 && rE.a < 0) this.previsionRecos.push({ titre: 'Bonne tendance électricité', description: `Réduction de ${Math.abs(rE.a).toFixed(1)} kWh/mois sur ${ptE.length} mois.`, economie: Math.round(Math.abs(rE.a)*0.28*3), urgence: 'normale' });
-    if (ptG.length >= 2 && rG.a > 0) this.previsionRecos.push({ titre: 'Hausse du gazoil', description: `+${rG.a.toFixed(1)} L/mois sur ${ptG.length} mois.`, economie: Math.round(rG.a*2.1*3), urgence: 'haute' });
+
+    const nomElec   = this.getEnergieNom(idE);
+    const nomGazoil = this.getEnergieNom(idG);
+
+    if (ptE.length >= 2 && rE.a > 0)  this.previsionRecos.push({ titre: `Tendance ${nomElec} en hausse`, description: `+${rE.a.toFixed(1)} ${this.getEnergieUnite(idE)}/mois sur ${ptE.length} mois. Fiabilité : ${Math.round(rE.r2*100)}%.`, economie: Math.max(0, Math.round(rE.a * this.getTarifById(idE) * 12)), urgence: rE.a > 50 ? 'haute' : 'normale' });
+    else if (ptE.length >= 2 && rE.a < 0) this.previsionRecos.push({ titre: `Bonne tendance ${nomElec}`, description: `Réduction de ${Math.abs(rE.a).toFixed(1)} ${this.getEnergieUnite(idE)}/mois sur ${ptE.length} mois.`, economie: Math.round(Math.abs(rE.a) * this.getTarifById(idE) * 3), urgence: 'normale' });
+    if (ptG.length >= 2 && rG.a > 0) this.previsionRecos.push({ titre: `Hausse du ${nomGazoil}`, description: `+${rG.a.toFixed(1)} ${this.getEnergieUnite(idG)}/mois sur ${ptG.length} mois.`, economie: Math.round(rG.a * this.getTarifById(idG) * 3), urgence: 'haute' });
     if (!this.previsionRecos.length) this.previsionRecos.push({ titre: 'Consommations stables', description: `Stables sur ${Math.max(ptE.length,ptW.length,ptG.length)} mois. Fiabilité : ${fid}%.`, economie: 0, urgence: 'normale' });
     this.buildForecastPoints();
   }
@@ -1459,6 +1726,9 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     const check = () => {
       if (++done < total) return;
       this.loading = false;
+      if (!this.heatmapEnergie && this.energies.length > 0) {
+        this.heatmapEnergie = String(this.energies[0].idEnergie);
+      }
       this.initSeuilsFromEnergies();
       this.syncSeuilsActuelles();
       this.initBenchmarking();

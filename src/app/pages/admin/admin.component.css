@@ -2139,3 +2139,63 @@
   .sidebar { transform: translateX(-100%); }
   .main { margin-left: 0 !important; }
 }
+/* ── Date filter bar ──────────────────────────────────────────────── */
+.date-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  padding: 4px 10px;
+  flex-shrink: 0;
+}
+ 
+.date-filter-bar__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  white-space: nowrap;
+}
+ 
+.date-filter-bar__sep {
+  color: var(--text-muted, #64748b);
+  font-size: 12px;
+}
+ 
+.date-input {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text, #1e293b);
+  background: var(--bg, #fff);
+  cursor: pointer;
+  outline: none;
+}
+ 
+.date-input:focus {
+  border-color: var(--accent, #6366f1);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, .15);
+}
+ 
+/* ── Excel export tile ────────────────────────────────────────────── */
+.export-item--excel {
+  border-color: #22c55e33 !important;
+}
+ 
+.export-item--excel:hover {
+  background: #22c55e11 !important;
+  border-color: #22c55e !important;
+}
+ 
+.export-item--excel .export-item__dl {
+  background: #22c55e;
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}

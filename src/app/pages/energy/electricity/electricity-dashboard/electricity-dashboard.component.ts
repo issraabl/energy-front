@@ -116,33 +116,63 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   toasts:    ToastMsg[]               = [];
   apiErrors: Record<string, boolean>  = {};
 
-  // ── Erreur API (alias template) ───────────────────────────────────────────
+  // ── Erreur API ────────────────────────────────────────────────────────────
   get hasApiError(): boolean { return Object.keys(this.apiErrors).length > 0; }
 
   // ── Énergie électricité ───────────────────────────────────────────────────
   readonly electriciteId = 1;
+
   get energieLabel(): string { return this.getEnergieNom(this.electriciteId) || 'Électricité'; }
   get energieUnite(): string { return this.getEnergieUnite(this.electriciteId) || 'kWh'; }
 
+  /**
+   * Retourne le nom EXACT de l'énergie tel qu'il est en BDD.
+   * On l'envoie directement sans transformation : le backend fait .ToLower()
+   * des deux côtés, donc peu importe la casse ou les accents.
+   * Si les énergies ne sont pas encore chargées, retourne '' pour bloquer l'envoi.
+   */
+  get energieNomApi(): string {
+    // Priorité 1 : nom exact venant de l'API /energies
+    const fromEnergies = this.energies.find(e => Number(e.idEnergie) === this.electriciteId);
+    if (fromEnergies?.nom) return fromEnergies.nom;
+
+    // Priorité 2 : nom venant des mesures déjà chargées
+    for (const m of this.mesures) {
+      if (Number(m.energieId) === this.electriciteId && m.energie?.nom)
+        return m.energie.nom;
+    }
+
+    // Retourner '' plutôt qu'un fallback hardcodé qui risque de ne pas
+    // correspondre exactement au nom stocké en BDD → le saveMesure() bloquera
+    return '';
+  }
+
   // ── Modal Mesure ──────────────────────────────────────────────────────────
-  showMesureModal = false;
-  mesureForm!:    FormGroup;
-  mesureSaving    = false;
-  mesureSaved     = false;
-  editingMesure:  Mesure | null = null;
-  mesureToDelete: Mesure | null = null;
-  deleteSaving    = false;
+  showMesureModal         = false;
+  mesureForm!:            FormGroup;
+  mesureSaving            = false;
+  mesureSaved             = false;
+  editingMesure:          Mesure | null = null;
+  mesureToDelete:         Mesure | null = null;
+  deleteSaving            = false;
+  showDeleteMesureConfirm = false;
 
   // ── Modal Équipement ──────────────────────────────────────────────────────
-  showEquipementModal = false;
-  equipementForm!:    FormGroup;
-  equipementSaving    = false;
-  equipementSaved     = false;
-  editingEquipement:  Equipement | null = null;
-  showDeleteConfirm   = false;
-  equipementToDelete: Equipement | null = null;
+  showEquipementModal          = false;
+  equipementForm!:             FormGroup;
+  equipementSaving             = false;
+  equipementSaved              = false;
+  editingEquipement:           Equipement | null = null;
+  showDeleteEquipementConfirm  = false;
+  equipementToDelete:          Equipement | null = null;
 
-  // ── Modal Seuil ────────────────────────────────────────────────────────────
+  // Rétro-compatibilité si le HTML utilise encore showDeleteConfirm
+  get showDeleteConfirm(): boolean {
+    return this.showDeleteMesureConfirm || this.showDeleteEquipementConfirm;
+  }
+  set showDeleteConfirm(_: boolean) {}
+
+  // ── Modal Seuil ───────────────────────────────────────────────────────────
   showSeuilModal         = false;
   seuilForm!:            FormGroup;
   seuilSaving            = false;
@@ -156,15 +186,15 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   seuilAlerte            = 0;
 
   // ── Modal Alerte ──────────────────────────────────────────────────────────
-  showAlerteModal      = false;
-  alerteForm!:         FormGroup;
-  alerteSaving         = false;
-  alerteSaved          = false;
-  alertesAutoGenerees  = 0;
-  editingAlerte:       AlerteExt | null = null;
-  alerteToDelete:      AlerteExt | null = null;
+  showAlerteModal         = false;
+  alerteForm!:            FormGroup;
+  alerteSaving            = false;
+  alerteSaved             = false;
+  alertesAutoGenerees     = 0;
+  editingAlerte:          AlerteExt | null = null;
+  alerteToDelete:         AlerteExt | null = null;
   showDeleteAlerteConfirm = false;
-  alertesApi:          AlerteExt[] = [];
+  alertesApi:             AlerteExt[] = [];
 
   // ── Modal Anomalie ────────────────────────────────────────────────────────
   showAnomalieModal = false;
@@ -172,7 +202,6 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   anomalieSaving    = false;
   anomalieSaved     = false;
 
-  // anomaliesLocales stockées en mémoire (marquage resolu local)
   private _anomaliesLocalesResoluIds = new Set<string>();
 
   get anomaliesLocales(): AnomalieLocale[] {
@@ -187,7 +216,6 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
       }));
   }
 
-  // anomaliesApi = anomalies issues de l'API (alias pour le template)
   get anomaliesApi(): AnomalieExt[] { return this.anomalies; }
 
   resolveAnomalieLocale(a: AnomalieLocale): void {
@@ -196,12 +224,12 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   }
 
   // ── Filtres Alertes ───────────────────────────────────────────────────────
-  searchAlerte          = '';
-  filterAlertType       = '';
-  filterAlertSeverite   = '';
-  filterAlertStatut     = '';
-  filterAlerteSeverite  = '';   // alias template
-  filterAlerteTraite    = '';   // alias template
+  searchAlerte         = '';
+  filterAlertType      = '';
+  filterAlertSeverite  = '';
+  filterAlertStatut    = '';
+  filterAlerteSeverite = '';
+  filterAlerteTraite   = '';
 
   // ── Filtres Anomalies ─────────────────────────────────────────────────────
   searchAnomalie       = '';
@@ -234,7 +262,7 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   showComparaison = false;
 
   tarifKwh  = 0.28;
-  tarifElec = 0.28;   // alias template
+  tarifElec = 0.28;
 
   // ── IA ────────────────────────────────────────────────────────────────────
   showChat    = false;
@@ -260,8 +288,8 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   heatmapHourLabels: string[]   = [];
 
   // ── Benchmarking ──────────────────────────────────────────────────────────
-  benchmarkData: BenchmarkItem[]                    = [];
-  rankTimeline:  { label: string; pct: number }[]   = [];
+  benchmarkData: BenchmarkItem[]                  = [];
+  rankTimeline:  { label: string; pct: number }[] = [];
 
   // ── Prévisions ────────────────────────────────────────────────────────────
   previsionMoisProchain = {
@@ -286,7 +314,7 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   equipPerPage      = 8;
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // GETTERS PUBLICS (utilisés dans le template)
+  // GETTERS PUBLICS
   // ═══════════════════════════════════════════════════════════════════════════
 
   get canWrite(): boolean { return this.canEdit; }
@@ -296,22 +324,17 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     return ['responsable_energie', 'administrateur', 'responsable_electricite'].includes(role);
   }
 
-  // ── seuils (alias de seuilsList) ──────────────────────────────────────────
   get seuils(): Seuil[] { return this.seuilsList; }
 
-  // ── anomaliesCount ────────────────────────────────────────────────────────
   get anomaliesCount(): number {
     return this.anomaliesLocales.filter(a => !a.resolu).length
          + this.anomalies.filter(a => !a.resolu).length;
   }
 
-  // ── alertesActives ────────────────────────────────────────────────────────
   get alertesActives(): number { return this.alertes.filter(a => !a.traite).length; }
 
-  // ── notifNonLues ──────────────────────────────────────────────────────────
   get notifNonLues(): number { return this.alertesActives + this.anomaliesCount; }
 
-  // ── tendanceLabel ─────────────────────────────────────────────────────────
   get tendanceLabel(): string {
     switch (this.tendance) {
       case 'up':   return '↑ En hausse';
@@ -320,7 +343,6 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  // ── recommandations filtrées ──────────────────────────────────────────────
   get recommandationsEnCours(): RecommandationExt[] {
     return this.recommandations.filter(r => !r.applique);
   }
@@ -328,7 +350,6 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     return this.recommandations.filter(r => r.applique);
   }
 
-  // ── mesuresMoisCourant ────────────────────────────────────────────────────
   get mesuresMoisCourant(): number {
     const now = new Date();
     return this.mesures.filter(m => {
@@ -337,7 +358,6 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     }).length;
   }
 
-  // ── consommationMoisCourant ───────────────────────────────────────────────
   get consommationMoisCourant(): number {
     const now = new Date();
     return +this.mesures
@@ -349,7 +369,6 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
       .toFixed(1);
   }
 
-  // ── pagination mesures ────────────────────────────────────────────────────
   get mesureTotalPages(): number {
     return Math.max(1, Math.ceil(this.filteredMesures.length / this.mesurePerPage));
   }
@@ -361,7 +380,6 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     return this.filteredMesures.slice(start, start + this.mesurePerPage);
   }
 
-  // ── filteredMesures ───────────────────────────────────────────────────────
   get filteredMesures(): Mesure[] {
     let list = [...this.mesures];
     const q = this.searchMesure.trim().toLowerCase();
@@ -385,7 +403,6 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     return list;
   }
 
-  // ── filteredAlertes ───────────────────────────────────────────────────────
   get filteredAlertes(): AlerteExt[] {
     let list = [...this.alertes];
     const sev   = this.filterAlerteSeverite || this.filterAlertSeverite;
@@ -409,13 +426,13 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     if (!this.seuilAlerte || this.totalConsommation <= this.seuilAlerte) return 0;
     return +((this.totalConsommation - this.seuilAlerte) * this.tarifElec).toFixed(2);
   }
-  get totalMesures()       { return this.mesures.length; }
-  get alertesNonTraitees() { return this.alertes.filter(a => !a.traite).length; }
+  get totalMesures()         { return this.mesures.length; }
+  get alertesNonTraitees()   { return this.alertes.filter(a => !a.traite).length; }
   get anomaliesNonResolues() { return this.anomalies.filter(a => !a.resolu).length; }
   get totalRecommandations() { return this.recommandations.length; }
-  get recoAppliquees()     { return this.recommandations.filter(r => r.applique).length; }
-  get alertesCritiques()   { return this.alertes.filter(a => !a.traite && a.severite === 'Critique').length; }
-  get alertesHautes()      { return this.alertes.filter(a => !a.traite && a.severite === 'Haute').length; }
+  get recoAppliquees()       { return this.recommandations.filter(r => r.applique).length; }
+  get alertesCritiques()     { return this.alertes.filter(a => !a.traite && a.severite === 'Critique').length; }
+  get alertesHautes()        { return this.alertes.filter(a => !a.traite && a.severite === 'Haute').length; }
 
   get moyenneMesures(): number {
     if (!this.mesures.length) return 0;
@@ -430,9 +447,12 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   get coutMoisCourant(): number {
     const now = new Date();
     return +this.mesures
-      .filter(m => { const d = new Date(m.dateMesure); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); })
-      .reduce((s, m) => s + m.valeur, 0)
-      .toFixed(2) * this.tarifElec;
+      .filter(m => {
+        const d = new Date(m.dateMesure);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      })
+      .reduce((s, m) => s + m.valeur * this.tarifElec, 0)
+      .toFixed(2);
   }
   get mesuresAujourd(): number {
     const today = new Date().toDateString();
@@ -463,12 +483,8 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   trackByToastId(_: number, item: ToastMsg): number { return item.id; }
-
   onFilterChange(): void { this.mesurePage = 1; }
-
-  recalcCout(): void {
-    this.tarifKwh = this.tarifElec;
-  }
+  recalcCout(): void { this.tarifKwh = this.tarifElec; }
 
   getEquipNom(id: number | null | undefined): string {
     if (!id) return '—';
@@ -481,20 +497,16 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     if (s === 'Haute')    return 'tag--warn';
     return 'tag--ghost';
   }
-
   getPrioriteClass(p?: string): string {
     if (p === 'Haute')   return 'tag--danger';
     if (p === 'Moyenne') return 'tag--warn';
     return 'tag--ghost';
   }
-
-  // alias template
   getRecoPrioriteClass(p?: string): string { return this.getPrioriteClass(p); }
-
   isAboveThreshold(val: number): boolean { return val > this.alertThreshold; }
 
-  get nowIso(): string    { return new Date().toISOString().slice(0, 16); }
-  get todayDate(): string { return new Date().toISOString().slice(0, 10); }
+  get nowIso(): string     { return new Date().toISOString().slice(0, 16); }
+  get todayDate(): string  { return new Date().toISOString().slice(0, 10); }
   get currentYear(): number { return new Date().getFullYear(); }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -529,7 +541,7 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
       valeur:       ['', [Validators.required, Validators.min(0)]],
       dateMesure:   [new Date().toISOString().slice(0, 16), Validators.required],
       sourceDonnee: ['Saisie manuelle', Validators.required],
-      equipementId: [''],
+      equipementId: [null],
       commentaire:  [''],
     });
     this.equipementForm = this.fb.group({
@@ -579,7 +591,7 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   private normalizeMesure(m: any): Mesure {
     const energieRaw   = m.energie    ?? m.Energie    ?? null;
     const equipRaw     = m.equipement ?? m.Equipement ?? null;
-    const energieId    = m.energieId ?? m.EnergieId ?? energieRaw?.idEnergie ?? energieRaw?.IdEnergie ?? this.electriciteId;
+    const energieId    = m.energieId  ?? m.EnergieId  ?? energieRaw?.idEnergie ?? energieRaw?.IdEnergie ?? this.electriciteId;
     const equipementId = m.equipementId ?? m.EquipementId ?? equipRaw?.idEquipement ?? equipRaw?.IdEquipement ?? null;
     return {
       idMesure:     m.idMesure     ?? m.IdMesure    ?? 0,
@@ -599,18 +611,18 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     const energieRaw = e.energie ?? e.Energie ?? null;
     const energieId  = e.energieId ?? e.EnergieId ?? energieRaw?.idEnergie ?? energieRaw?.IdEnergie ?? null;
     return {
-      idEquipement:      e.idEquipement     ?? e.IdEquipement      ?? 0,
-      nom:               e.nom              ?? e.Nom               ?? '',
-      typeEquipement:    e.typeEquipement   ?? e.TypeEquipement    ?? '',
-      statut:            e.statut           ?? e.Statut            ?? 'Actif',
-      puissance:         +(e.puissance      ?? e.Puissance         ?? 0),
-      localisation:      e.localisation     ?? e.Localisation      ?? '',
-      dateMiseEnService: e.dateMiseEnService ?? e.DateMiseEnService ?? null,
-      dateInstallation:  e.dateInstallation  ?? e.DateInstallation  ?? null,
+      idEquipement:      e.idEquipement      ?? e.IdEquipement      ?? 0,
+      nom:               e.nom               ?? e.Nom               ?? '',
+      typeEquipement:    e.typeEquipement    ?? e.TypeEquipement    ?? '',
+      statut:            e.statut            ?? e.Statut            ?? 'Actif',
+      puissance:         +(e.puissance       ?? e.Puissance         ?? 0),
+      localisation:      e.localisation      ?? e.Localisation      ?? '',
+      dateMiseEnService: e.dateMiseEnService  ?? e.DateMiseEnService ?? null,
+      dateInstallation:  e.dateInstallation   ?? e.DateInstallation  ?? null,
       energieId,
-      zoneId:            e.zoneId           ?? e.ZoneId            ?? null,
+      zoneId:            e.zoneId            ?? e.ZoneId            ?? null,
       energie:           energieRaw ? this.normalizeEnergie(energieRaw) : null,
-      zone:              e.zone             ?? e.Zone              ?? null,
+      zone:              e.zone              ?? e.Zone              ?? null,
     } as Equipement;
   }
 
@@ -665,16 +677,14 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     this.api.getSeuils().subscribe({
       next: (data: any[]) => {
         this.seuilsList = this.energies.map((e, i) => {
-          const found = data.find(s =>
-            (s.energieId ?? s.EnergieId) === Number(e.idEnergie)
-          );
+          const found = data.find(s => (s.energieId ?? s.EnergieId) === Number(e.idEnergie));
           return {
             id:             found ? (found.idSeuil ?? found.IdSeuil ?? i + 1) : i + 1,
             energieId:      Number(e.idEnergie),
             nom:            e.nom,
-            periode:        found ? (found.periode  ?? 'Mensuel')               : 'Mensuel',
-            annee:          found ? (found.annee    ?? new Date().getFullYear()) : new Date().getFullYear(),
-            valeurCible:    found ? (found.valeur   ?? 0)                       : 0,
+            periode:        found?.periode  ?? 'Mensuel',
+            annee:          found?.annee    ?? new Date().getFullYear(),
+            valeurCible:    found?.valeur   ?? 0,
             valeurActuelle: this.getEnergieTotal(Number(e.idEnergie)),
             unite:          e.unite,
           };
@@ -711,7 +721,7 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   }
 
   confirmDeleteSeuil(s: Seuil): void {
-    this.seuilToDelete = s;
+    this.seuilToDelete          = s;
     this.showDeleteSeuilConfirm = true;
   }
 
@@ -723,18 +733,15 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
       next: () => {
         const idx = this.seuilsList.findIndex(x => x.id === target.id);
         if (idx >= 0) this.seuilsList[idx] = { ...this.seuilsList[idx], valeurCible: 0 };
-        this.seuilsList           = [...this.seuilsList];
-        this.seuilsHistorique     = this.seuilsList.filter(x => x.valeurCible > 0);
-        this.deleteSeuilSaving    = false;
+        this.seuilsList             = [...this.seuilsList];
+        this.seuilsHistorique       = this.seuilsList.filter(x => x.valeurCible > 0);
+        this.deleteSeuilSaving      = false;
         this.showDeleteSeuilConfirm = false;
-        this.seuilToDelete        = null;
+        this.seuilToDelete          = null;
         this.updateSeuilAlerte();
         this.showToast('Seuil supprimé.', 'info');
       },
-      error: () => {
-        this.deleteSeuilSaving = false;
-        this.showToast('Erreur lors de la suppression.', 'error');
-      },
+      error: () => { this.deleteSeuilSaving = false; this.showToast('Erreur lors de la suppression.', 'error'); },
     });
   }
 
@@ -746,24 +753,25 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   saveSeuil(): void {
     if (this.seuilForm.invalid) { this.seuilForm.markAllAsTouched(); return; }
     this.seuilSaving = true;
-    const v = this.seuilForm.value;
+    const v         = this.seuilForm.value;
     const energieId = this.electriciteId;
-    const payload = { energieId, valeur: +v.valeurCible, periode: v.periode, annee: +v.annee };
-    const isEdit  = !!this.editingSeuil && this.editingSeuil.valeurCible > 0;
-    const req$    = isEdit ? this.api.updateSeuil(energieId, payload) : this.api.createSeuil(payload);
+    const payload   = { energieId, valeur: +v.valeurCible, periode: v.periode, annee: +v.annee };
+    const isEdit    = !!this.editingSeuil && this.editingSeuil.valeurCible > 0;
+    const req$      = isEdit ? this.api.updateSeuil(energieId, payload) : this.api.createSeuil(payload);
 
     req$.subscribe({
       next: () => {
-        const idx = this.seuilsList.findIndex(s => s.energieId === energieId);
+        const idx     = this.seuilsList.findIndex(s => s.energieId === energieId);
         const updated: Seuil = {
           id:             this.editingSeuil?.id ?? Date.now(),
-          energieId, nom: this.getEnergieNom(energieId),
-          periode:        v.periode, annee: +v.annee,
+          energieId,      nom: this.getEnergieNom(energieId),
+          periode:        v.periode,   annee:          +v.annee,
           valeurCible:    +v.valeurCible,
           valeurActuelle: this.getEnergieTotal(energieId),
           unite:          this.getEnergieUnite(energieId),
         };
-        if (idx >= 0) this.seuilsList[idx] = updated; else this.seuilsList = [...this.seuilsList, updated];
+        if (idx >= 0) this.seuilsList[idx] = updated;
+        else          this.seuilsList       = [...this.seuilsList, updated];
         this.seuilsList       = [...this.seuilsList];
         this.seuilsHistorique = this.seuilsList.filter(s => s.valeurCible > 0);
         this.seuilSaving = false; this.seuilSaved = true; this.editingSeuil = null;
@@ -774,21 +782,27 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
       error: (err: any) => {
         if (err.status === 400 && !isEdit) {
           this.api.updateSeuil(energieId, payload).subscribe({
-            next: () => { this.seuilSaving = false; this.seuilSaved = true; this.showToast('Seuil mis à jour !', 'success'); setTimeout(() => { this.seuilSaved = false; this.showSeuilModal = false; }, 1600); },
+            next:  () => { this.seuilSaving = false; this.seuilSaved = true; this.showToast('Seuil mis à jour !', 'success'); setTimeout(() => { this.seuilSaved = false; this.showSeuilModal = false; }, 1600); },
             error: () => { this.seuilSaving = false; this.showToast('Erreur lors de la sauvegarde.', 'error'); },
           });
-        } else { this.seuilSaving = false; this.showToast('Erreur lors de la sauvegarde.', 'error'); }
+        } else {
+          this.seuilSaving = false;
+          this.showToast('Erreur lors de la sauvegarde.', 'error');
+        }
       },
     });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // MODAL MESURE
+  // MODAL MESURE — CRUD COMPLET CORRIGÉ
   // ═══════════════════════════════════════════════════════════════════════════
 
   openAddMesure(): void {
     this.editingMesure = null;
-    this.mesureForm.reset({ sourceDonnee: 'Saisie manuelle', dateMesure: new Date().toISOString().slice(0, 16) });
+    this.mesureForm.reset({
+      valeur: '', dateMesure: new Date().toISOString().slice(0, 16),
+      sourceDonnee: 'Saisie manuelle', equipementId: null, commentaire: '',
+    });
     this.mesureSaved     = false;
     this.showMesureModal = true;
   }
@@ -796,45 +810,146 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   openEditMesure(m: Mesure): void {
     this.editingMesure = m;
     this.mesureForm.patchValue({
-      valeur: m.valeur, dateMesure: m.dateMesure?.slice(0, 16) ?? new Date().toISOString().slice(0, 16),
-      sourceDonnee: m.sourceDonnee, equipementId: m.equipementId ?? '', commentaire: m.commentaire ?? '',
+      valeur:       m.valeur,
+      dateMesure:   m.dateMesure?.slice(0, 16) ?? new Date().toISOString().slice(0, 16),
+      sourceDonnee: m.sourceDonnee,
+      equipementId: m.equipementId ?? null,
+      commentaire:  m.commentaire  ?? '',
     });
     this.mesureSaved     = false;
     this.showMesureModal = true;
   }
 
-  closeMesureModal(): void { this.showMesureModal = false; this.editingMesure = null; }
+  closeMesureModal(): void {
+    this.showMesureModal = false;
+    this.editingMesure   = null;
+    this.mesureSaved     = false;
+  }
 
   saveMesure(): void {
     if (this.mesureForm.invalid) { this.mesureForm.markAllAsTouched(); return; }
     this.mesureSaving = true;
-    const v   = this.mesureForm.value;
-    const dto = { ...v, energieId: this.electriciteId };
-    const obs = this.editingMesure
-      ? this.api.updateMesure(this.editingMesure.idMesure, dto)
+
+    const v = this.mesureForm.value;
+
+    // Date ISO complète
+    const dateMesure = v.dateMesure
+      ? new Date(v.dateMesure).toISOString()
+      : new Date().toISOString();
+
+    // equipementId null si vide
+    const equipementId =
+      v.equipementId !== null && v.equipementId !== undefined && v.equipementId !== ''
+        ? Number(v.equipementId)
+        : null;
+
+    // ─── FIX PRINCIPAL ────────────────────────────────────────────────────
+    // On récupère le nom EXACT depuis l'API (ex: "Électricité")
+    // Le backend fait .ToLower() des deux côtés → la comparaison passera
+    // même si le nom contient des accents ou des majuscules.
+    const energieNom = this.energieNomApi;
+
+    // Bloquer l'envoi si les énergies ne sont pas encore chargées
+    if (!energieNom) {
+      this.mesureSaving = false;
+      this.showToast('Données énergie non chargées. Rafraîchissez la page.', 'warn');
+      return;
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
+    console.log('[saveMesure] energieNom envoyé =', energieNom, '| role =', this.currentUser?.role);
+
+    const isEdit = !!this.editingMesure;
+    const dto: any = {
+      energieNom,
+      valeur:       Number(v.valeur),
+      dateMesure,
+      sourceDonnee: v.sourceDonnee?.trim() || 'Saisie manuelle',
+      commentaire:  v.commentaire?.trim()  || '',
+      ...(equipementId !== null ? { equipementId } : {}),
+    };
+
+    console.log('[saveMesure] DTO complet =', JSON.stringify(dto));
+
+    const obs = isEdit
+      ? this.api.updateMesure(this.editingMesure!.idMesure, dto)
       : this.api.createMesure(dto);
+
     obs.subscribe({
-      next: () => {
-        this.mesureSaving = false; this.mesureSaved = true;
-        this.showToast(this.editingMesure ? 'Mesure modifiée !' : 'Mesure enregistrée !', 'success');
-        setTimeout(() => { this.mesureSaved = false; this.showMesureModal = false; this.editingMesure = null; this.loadAll(); }, 1600);
+      next: (result: any) => {
+        this.mesureSaving = false;
+        this.mesureSaved  = true;
+        this.showToast(isEdit ? 'Mesure modifiée !' : 'Mesure enregistrée !', 'success');
+
+        // Injection locale immédiate pour réactivité
+        if (!isEdit && result) {
+          try {
+            const newM = this.normalizeMesure(result);
+            if (Number(newM.energieId) === this.electriciteId) {
+              this.mesures = [newM, ...this.mesures];
+              this.syncSeuilsActuelles();
+              this.computeComparaison();
+            }
+          } catch (_) { /* loadAll recharge quoi qu'il arrive */ }
+        }
+
+        setTimeout(() => {
+          this.mesureSaved     = false;
+          this.showMesureModal = false;
+          this.editingMesure   = null;
+          this.loadAll();
+        }, 1600);
       },
-      error: () => { this.mesureSaving = false; this.showToast('Erreur lors de la sauvegarde.', 'error'); },
+      error: (err: any) => {
+        this.mesureSaving = false;
+        console.error('[saveMesure] Erreur API :', err);
+        console.error('[saveMesure] Status :', err?.status, '| Body :', JSON.stringify(err?.error));
+
+        const apiMsg =
+          err?.error?.message ||
+          err?.error?.title   ||
+          err?.error?.detail  ||
+          (err?.status === 403
+            ? 'Accès refusé (403) — vérifiez votre rôle et le nom de l\'énergie en BDD'
+            : null) ||
+          err?.message        ||
+          'Erreur lors de la sauvegarde.';
+
+        this.showToast(apiMsg, 'error');
+      },
     });
   }
 
-  confirmDelete(m: Mesure): void { this.mesureToDelete = m; this.showDeleteConfirm = true; }
+  confirmDelete(m: Mesure): void {
+    this.mesureToDelete          = m;
+    this.showDeleteMesureConfirm = true;
+  }
+
+  cancelDeleteMesure(): void {
+    this.showDeleteMesureConfirm = false;
+    this.mesureToDelete          = null;
+  }
 
   deleteMesure(): void {
     if (!this.mesureToDelete) return;
     this.deleteSaving = true;
-    this.api.deleteMesure(this.mesureToDelete.idMesure).subscribe({
+    const id = this.mesureToDelete.idMesure;
+
+    this.api.deleteMesure(id).subscribe({
       next: () => {
-        this.deleteSaving = false; this.showDeleteConfirm = false; this.mesureToDelete = null;
+        this.mesures                 = this.mesures.filter(m => m.idMesure !== id);
+        this.deleteSaving            = false;
+        this.showDeleteMesureConfirm = false;
+        this.mesureToDelete          = null;
+        this.syncSeuilsActuelles();
+        this.computeComparaison();
         this.showToast('Mesure supprimée.', 'success');
-        this.loadAll();
       },
-      error: () => { this.deleteSaving = false; this.showToast('Erreur lors de la suppression.', 'error'); },
+      error: (err: any) => {
+        this.deleteSaving = false;
+        console.error('[deleteMesure] Erreur API :', err);
+        this.showToast('Erreur lors de la suppression.', 'error');
+      },
     });
   }
 
@@ -867,7 +982,10 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
 
   openEditAlerte(a: AlerteExt): void {
     this.editingAlerte = a;
-    this.alerteForm.patchValue({ type: a.type, severite: a.severite, seuil: a.seuil, message: a.message, equipementId: a.equipementId ?? '' });
+    this.alerteForm.patchValue({
+      type: a.type, severite: a.severite, seuil: a.seuil,
+      message: a.message, equipementId: a.equipementId ?? '',
+    });
     this.alerteSaved     = false;
     this.showAlerteModal = true;
   }
@@ -880,16 +998,14 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
       if (this.editingAlerte) {
         const idx = this.alertes.findIndex(a => a.idAlerte === this.editingAlerte!.idAlerte);
         if (idx >= 0) this.alertes[idx] = { ...this.alertes[idx], ...v };
-        this.alertes    = [...this.alertes];
-        this.alertesApi = this.alertes;
+        this.alertes = [...this.alertes]; this.alertesApi = this.alertes;
       } else {
         const nouv: AlerteExt = {
           idAlerte: Date.now(), type: v.type, severite: v.severite, message: v.message,
           seuil: +(v.seuil) || 0, traite: false, dateCreation: new Date().toISOString(),
           equipementId: v.equipementId || null, sourceAuto: false,
         };
-        this.alertes    = [nouv, ...this.alertes];
-        this.alertesApi = this.alertes;
+        this.alertes = [nouv, ...this.alertes]; this.alertesApi = this.alertes;
       }
       this.alerteSaving = false; this.alerteSaved = true;
       this.showToast(this.editingAlerte ? 'Alerte modifiée !' : 'Alerte créée !', 'success');
@@ -899,21 +1015,20 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
 
   traiterAlerte(a: AlerteExt): void {
     a.traite = true; this.alertes = [...this.alertes]; this.alertesApi = this.alertes;
-    this.showToast(`Alerte traitée.`, 'success');
+    this.showToast('Alerte traitée.', 'success');
   }
 
   confirmDeleteAlerte(a: AlerteExt): void {
-    this.alerteToDelete = a;
-    this.showDeleteAlerteConfirm = true;
+    this.alerteToDelete = a; this.showDeleteAlerteConfirm = true;
   }
 
   deleteAlerte(): void {
     const target = this.alerteToDelete;
     if (!target) return;
-    this.alertes    = this.alertes.filter(x => x.idAlerte !== target.idAlerte);
-    this.alertesApi = this.alertes;
+    this.alertes                 = this.alertes.filter(x => x.idAlerte !== target.idAlerte);
+    this.alertesApi              = this.alertes;
     this.showDeleteAlerteConfirm = false;
-    this.alerteToDelete = null;
+    this.alerteToDelete          = null;
     this.showToast('Alerte supprimée.', 'info');
   }
 
@@ -924,7 +1039,8 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   // ═══════════════════════════════════════════════════════════════════════════
 
   appliquerRecommandation(r: RecommandationExt): void {
-    r.applique = true; this.recommandations = [...this.recommandations];
+    r.applique           = true;
+    this.recommandations = [...this.recommandations];
     this.showToast('Recommandation appliquée !', 'success');
   }
 
@@ -934,17 +1050,14 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
 
   lancerAnalyseIA(): void {
     if (this.iaLoading) return;
-    this.iaLoading = true;
-    this.iaAnalyse = '';
+    this.iaLoading = true; this.iaAnalyse = '';
     const prompt =
       `Tu es un expert en efficacité énergétique. Analyse cette consommation électrique :\n` +
-      `- Total : ${this.totalConsommation} kWh\n` +
-      `- Moyenne : ${this.moyenneMesures} kWh\n` +
+      `- Total : ${this.totalConsommation} kWh\n- Moyenne : ${this.moyenneMesures} kWh\n` +
       `- Max : ${this.maxMesure} kWh | Min : ${this.minMesure} kWh\n` +
       `- Mesures : ${this.totalMesures} | Tendance : ${this.tendanceLabel}\n` +
       `- Alertes actives : ${this.alertesActives} | Anomalies : ${this.anomaliesCount}\n` +
-      `- Coût estimé : ${this.coutTotal} DT\n\n` +
-      `Donne un diagnostic et des recommandations concrètes pour réduire la consommation.`;
+      `- Coût estimé : ${this.coutTotal} DT\n\nDonne un diagnostic et des recommandations concrètes pour réduire la consommation.`;
     this.api.ollamaChat(prompt).subscribe({
       next:  (res: any) => { this.iaLoading = false; this.iaAnalyse = res.response ?? res.message ?? JSON.stringify(res); },
       error: ()         => { this.iaLoading = false; this.iaAnalyse = 'Service IA indisponible. Vérifiez la connexion Ollama.'; },
@@ -955,14 +1068,11 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
 
   envoyerIaChat(): void {
     if (!this.iaChatInput.trim() || this.iaChatLoading) return;
-    const question     = this.iaChatInput.trim();
-    this.iaChatInput   = '';
-    this.iaChatLoading = true;
-    this.iaChat        = '';
+    const question = this.iaChatInput.trim();
+    this.iaChatInput = ''; this.iaChatLoading = true; this.iaChat = '';
     const prompt =
       `Contexte Wicmic Électricité — Total : ${this.totalConsommation} kWh, ` +
-      `Moyenne : ${this.moyenneMesures} kWh, Tendance : ${this.tendance}.\n` +
-      `Question : ${question}`;
+      `Moyenne : ${this.moyenneMesures} kWh, Tendance : ${this.tendance}.\nQuestion : ${question}`;
     this.api.ollamaChat(prompt).subscribe({
       next:  (res: any) => { this.iaChatLoading = false; this.iaChat = res.response ?? ''; },
       error: ()         => { this.iaChatLoading = false; this.iaChat = 'Service IA indisponible.'; },
@@ -973,16 +1083,18 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     const msg = this.chatInput.trim();
     if (!msg || this.chatLoading) return;
     this.messages.push({ role: 'user', content: msg, time: new Date() });
-    this.chatInput   = '';
-    this.chatLoading = true;
-    this._scrollChat();
+    this.chatInput = ''; this.chatLoading = true; this._scrollChat();
     this.api.ollamaChat(msg).subscribe({
       next:  (res: any) => { this.messages.push({ role: 'assistant', content: res.response, time: new Date() }); this.chatLoading = false; this._scrollChat(); },
       error: ()         => { this.messages.push({ role: 'assistant', content: 'Service IA indisponible.', time: new Date() }); this.chatLoading = false; this._scrollChat(); },
     });
   }
+
   private _scrollChat(): void {
-    setTimeout(() => { if (this.chatScrollRef?.nativeElement) this.chatScrollRef.nativeElement.scrollTop = this.chatScrollRef.nativeElement.scrollHeight; }, 50);
+    setTimeout(() => {
+      if (this.chatScrollRef?.nativeElement)
+        this.chatScrollRef.nativeElement.scrollTop = this.chatScrollRef.nativeElement.scrollHeight;
+    }, 50);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -991,12 +1103,12 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
 
   telechargerRapport(type: string): void {
     switch (type) {
-      case 'mensuel':        this.exportRapport(); break;
-      case 'csv':            this.exportCSV(); break;
-      case 'alertes':        this.exportRapportAlertes(); break;
-      case 'anomalies':      this.exportRapportAnomalies(); break;
+      case 'mensuel':         this.exportRapport(); break;
+      case 'csv':             this.exportCSV(); break;
+      case 'alertes':         this.exportRapportAlertes(); break;
+      case 'anomalies':       this.exportRapportAnomalies(); break;
       case 'recommandations': this.exportRapportRecommandations(); break;
-      case 'complet':        this.exportRapportComplet(); break;
+      case 'complet':         this.exportRapportComplet(); break;
     }
   }
 
@@ -1039,7 +1151,9 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
       `Généré le : ${new Date().toLocaleString('fr-FR')}`,
       `Anomalies locales : ${this.anomaliesLocales.length}`,
       `Anomalies API     : ${this.anomalies.length}`, sep,
-      ...this.anomaliesLocales.map(a => `[${a.resolu ? 'RÉSOLU' : 'ACTIF'}] ${a.description} — ${new Date(a.date).toLocaleDateString('fr-FR')}`),
+      ...this.anomaliesLocales.map(a =>
+        `[${a.resolu ? 'RÉSOLU' : 'ACTIF'}] ${a.description} — ${new Date(a.date).toLocaleDateString('fr-FR')}`
+      ),
     ];
     this.download(lines.join('\n'), `anomalies_electricite_${new Date().toISOString().slice(0, 10)}.txt`, 'text/plain');
     this.showToast('Rapport anomalies téléchargé.', 'success');
@@ -1198,8 +1312,8 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     return d;
   }
 
-  get linePath():  string { return this.pathFromPoints(this.chartPoints); }
-  get areaPath():  string { return this.areaFromPoints(this.chartPoints.filter(p => p.value > 0)); }
+  get linePath(): string { return this.pathFromPoints(this.chartPoints); }
+  get areaPath(): string { return this.areaFromPoints(this.chartPoints.filter(p => p.value > 0)); }
 
   get yAxisLabels(): { y: number; label: string }[] {
     const raw    = this.buildPoints(0);
@@ -1223,8 +1337,12 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   // ═══════════════════════════════════════════════════════════════════════════
 
   getEnergieTotal(energieId: number): number {
-    return +(this.mesures.filter(m => Number(m.energieId) === Number(energieId)).reduce((s, m) => s + (m.valeur ?? 0), 0).toFixed(1));
+    return +(this.mesures
+      .filter(m => Number(m.energieId) === Number(energieId))
+      .reduce((s, m) => s + (m.valeur ?? 0), 0)
+      .toFixed(1));
   }
+
   getEnergieUnite(energieId: number): string {
     const e = this.energies.find(e => Number(e.idEnergie) === Number(energieId));
     if (e?.unite) return e.unite;
@@ -1233,6 +1351,7 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     }
     return 'kWh';
   }
+
   getEnergieNom(energieId: number): string {
     if (!energieId) return '—';
     const found = this.energies.find(e => Number(e.idEnergie) === Number(energieId));
@@ -1257,6 +1376,7 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     if (this.filterEquipStatut) list = list.filter(e => (e.statut || 'Actif') === this.filterEquipStatut);
     return list;
   }
+
   get pagedEquipements(): Equipement[] {
     const s = (this.equipPage - 1) * this.equipPerPage;
     return this.filteredEquipements.slice(s, s + this.equipPerPage);
@@ -1272,29 +1392,63 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
   openAddEquipement(): void {
     this.editingEquipement = null;
     this.equipementForm.reset({ statut: 'Actif', dateInstallation: new Date().toISOString().slice(0, 10) });
-    this.equipementSaved = false; this.showEquipementModal = true;
+    this.equipementSaved    = false;
+    this.showEquipementModal = true;
+  }
+
+  openEditEquipement(e: Equipement): void {
+    this.editingEquipement = e;
+    this.equipementForm.patchValue({
+      nom:              e.nom,
+      typeEquipement:   e.typeEquipement,
+      statut:           e.statut || 'Actif',
+      puissance:        e.puissance,
+      localisation:     e.localisation,
+      dateInstallation: (e.dateMiseEnService || e.dateInstallation)?.slice(0, 10) ?? '',
+      energieId:        e.energieId ?? '',
+      zoneId:           e.zoneId    ?? '',
+    });
+    this.equipementSaved    = false;
+    this.showEquipementModal = true;
   }
 
   saveEquipement(): void {
     if (this.equipementForm.invalid) { this.equipementForm.markAllAsTouched(); return; }
     this.equipementSaving = true;
     const v   = this.equipementForm.value;
-    const dto = { nom: v.nom, typeEquipement: v.typeEquipement, statut: v.statut, puissance: v.puissance, localisation: v.localisation, dateMiseEnService: v.dateInstallation ? new Date(v.dateInstallation).toISOString() : null, energieId: v.energieId || null, zoneId: v.zoneId || null };
+    const dto = {
+      nom:               v.nom,
+      typeEquipement:    v.typeEquipement,
+      statut:            v.statut,
+      puissance:         v.puissance,
+      localisation:      v.localisation,
+      dateMiseEnService: v.dateInstallation ? new Date(v.dateInstallation).toISOString() : null,
+      energieId:         v.energieId || null,
+      zoneId:            v.zoneId    || null,
+    };
     const obs = this.editingEquipement
       ? this.api.updateEquipement(this.editingEquipement.idEquipement, dto)
       : this.api.createEquipement(dto);
     obs.subscribe({
-      next: () => { this.equipementSaving = false; this.equipementSaved = true; this.showToast(this.editingEquipement ? 'Équipement modifié !' : 'Équipement ajouté !', 'success'); setTimeout(() => { this.equipementSaved = false; this.showEquipementModal = false; this.loadAll(); }, 1600); },
+      next:  () => { this.equipementSaving = false; this.equipementSaved = true; this.showToast(this.editingEquipement ? 'Équipement modifié !' : 'Équipement ajouté !', 'success'); setTimeout(() => { this.equipementSaved = false; this.showEquipementModal = false; this.loadAll(); }, 1600); },
       error: () => { this.equipementSaving = false; this.showToast('Erreur.', 'error'); },
     });
   }
 
-  confirmDeleteEquipement(e: Equipement): void { this.equipementToDelete = e; this.showDeleteConfirm = true; }
+  confirmDeleteEquipement(e: Equipement): void {
+    this.equipementToDelete          = e;
+    this.showDeleteEquipementConfirm = true;
+  }
+
+  cancelDeleteEquipement(): void {
+    this.showDeleteEquipementConfirm = false;
+    this.equipementToDelete          = null;
+  }
 
   deleteEquipement(): void {
     if (!this.equipementToDelete) return;
     this.api.deleteEquipement(this.equipementToDelete.idEquipement).subscribe({
-      next:  () => { this.showToast('Équipement supprimé.', 'info'); this.showDeleteConfirm = false; this.equipementToDelete = null; this.loadAll(); },
+      next:  () => { this.showToast('Équipement supprimé.', 'info'); this.showDeleteEquipementConfirm = false; this.equipementToDelete = null; this.loadAll(); },
       error: () => { this.showToast('Erreur.', 'error'); },
     });
   }
@@ -1308,15 +1462,18 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
     this.toasts.unshift({ id, msg, type });
     setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, 4000);
   }
+
   dismissToast(id: number): void { this.toasts = this.toasts.filter(t => t.id !== id); }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // LOAD ALL  ← FIX : filtre sur electriciteId après normalisation
+  // LOAD ALL
   // ═══════════════════════════════════════════════════════════════════════════
 
   loadAll(): void {
-    this.loading = true; this.apiErrors = {};
-    let done = 0; const total = 6;
+    this.loading   = true;
+    this.apiErrors = {};
+    let done = 0;
+    const total = 6;
     const check = () => {
       if (++done === total) {
         this.loading    = false;
@@ -1327,7 +1484,6 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
       }
     };
 
-    // ✅ FIX : on filtre uniquement les mesures d'électricité (energieId === 1)
     this.api.getMesures().subscribe({
       next: (d: any) => {
         this.mesures = (d as any[])
@@ -1342,18 +1498,26 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
       next:  (d: any) => { this.alertes = (d as any[]).map((a: any) => this.normalizeAlerte(a)); this.alertesApi = this.alertes; check(); },
       error: ()       => { this.apiErrors['alertes'] = true; check(); },
     });
+
     this.api.getAnomalies().subscribe({
-      next:  (d: any) => { this.anomalies = (d as any[]).map((a: any) => this.normalizeAnomalie(a)); this.anomalies.forEach(a => { if (!this.progressMap.has(a.id ?? 0)) this.progressMap.set(a.id ?? 0, a.resolu ? 100 : 0); }); check(); },
-      error: ()       => { this.apiErrors['anomalies'] = true; check(); },
+      next: (d: any) => {
+        this.anomalies = (d as any[]).map((a: any) => this.normalizeAnomalie(a));
+        this.anomalies.forEach(a => { if (!this.progressMap.has(a.id ?? 0)) this.progressMap.set(a.id ?? 0, a.resolu ? 100 : 0); });
+        check();
+      },
+      error: () => { this.apiErrors['anomalies'] = true; check(); },
     });
+
     this.api.getRecommandations().subscribe({
       next:  (d: any) => { this.recommandations = d as RecommandationExt[]; check(); },
       error: ()       => { this.apiErrors['recommandations'] = true; check(); },
     });
+
     this.api.getEquipements().subscribe({
       next:  (d: any) => { this.equipements = (d as any[]).map((e: any) => this.normalizeEquipement(e)); check(); },
       error: ()       => { this.apiErrors['equipements'] = true; check(); },
     });
+
     this.api.getEnergies().subscribe({
       next:  (d: any) => { this.energies = (d as any[]).map((e: any) => this.normalizeEnergie(e)); check(); },
       error: ()       => { this.apiErrors['energies'] = true; check(); },
@@ -1362,6 +1526,3 @@ export class ElectricityDashboardComponent implements OnInit, OnDestroy {
 
   logout(): void { this.auth.logout(); }
 }
-
-// ─── Alias pour app-routing.module.ts ────────────────────────────────────────
-export { ElectricityDashboardComponent as EnergyDashboardComponent };
