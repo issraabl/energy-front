@@ -70,14 +70,6 @@ export interface Alerte {
   equipement?: { idEquipement: number; nom: string };
 }
 
-export interface Anomalie {
-  idAnomalie: number;
-  type: string;
-  message: string;
-  statut: 'active' | 'traitée';
-  dateCreation: string;
-}
-
 export interface Energie {
   idEnergie: number;
   nom: string;
@@ -105,6 +97,58 @@ function isAlerteResolue(statut: string): boolean {
   return s === 'resolue' || s === 'reolue' || s === 'resolved' || s === 'resolu';
 }
 
+// ─── Détection sociale ────────────────────────────────────────────────────────
+
+const ADMIN_SOCIAL_WORDS = new Set([
+  'merci', 'thanks', 'thank you', 'super', 'parfait', 'ok', 'okay',
+  'bien', 'bonne journée', 'bonsoir', 'bonjour', 'salut', 'hello',
+  'au revoir', 'bye', 'nickel', 'top', 'cool', "d'accord", 'daccord',
+  'compris', 'vu', '👍', '🙏', '😊',
+]);
+
+const ADMIN_BUSINESS_WORDS = [
+  'consomm', 'kwh', 'énergi', 'energi', 'alert', 'équip', 'equip',
+  'mesur', 'rapport', 'score', 'prévi', 'previ',
+  'benchmark', 'eau', 'gazoil', 'électri', 'electri', 'compresseur',
+  'réduct', 'reduc', 'seuil', 'tendance', 'analyse', 'factur',
+  'site', 'zone', 'utilisateur', 'admin', 'statut', 'kpi',
+];
+
+function isAdminSocialMessage(msg: string): boolean {
+  const normalized = msg.trim().toLowerCase().replace(/[!.,?]/g, '');
+  const words      = normalized.split(/\s+/);
+  return ADMIN_SOCIAL_WORDS.has(normalized)
+    || (words.length <= 4 && !ADMIN_BUSINESS_WORDS.some(kw => normalized.includes(kw)));
+}
+
+const ADMIN_SOCIAL_RESPONSES: Record<string, string> = {
+  'merci':         'De rien ! N\'hésitez pas si vous avez d\'autres questions. 😊',
+  'thanks':        'You\'re welcome! Feel free to ask anytime.',
+  'thank you':     'You\'re welcome! Feel free to ask anytime.',
+  'super':         'Parfait ! Je reste disponible pour toute analyse. 👍',
+  'parfait':       'Parfait ! Je reste disponible pour toute analyse. 👍',
+  'nickel':        'Parfait ! Je reste disponible pour toute analyse. 👍',
+  'top':           'Merci ! Posez-moi vos questions sur la plateforme quand vous voulez.',
+  'cool':          'Merci ! Posez-moi vos questions sur la plateforme quand vous voulez.',
+  'bonne journée': 'Bonne journée à vous également ! À bientôt. 👋',
+  'bonsoir':       'Bonsoir ! Comment puis-je vous aider ce soir ?',
+  'bonjour':       'Bonjour ! Comment puis-je vous aider avec la gestion de la plateforme ?',
+  'salut':         'Bonjour ! Comment puis-je vous aider avec la gestion de la plateforme ?',
+  'hello':         'Bonjour ! Comment puis-je vous aider avec la gestion de la plateforme ?',
+  'au revoir':     'À bientôt ! N\'hésitez pas à revenir. 👋',
+  'bye':           'À bientôt ! 👋',
+  'ok':            'Parfait, je reste disponible si vous avez besoin d\'informations.',
+  'okay':          'Parfait, je reste disponible si vous avez besoin d\'informations.',
+  'bien':          'Très bien ! N\'hésitez pas à poser d\'autres questions.',
+  "d'accord":      'Très bien ! N\'hésitez pas à poser d\'autres questions.',
+  'daccord':       'Très bien ! N\'hésitez pas à poser d\'autres questions.',
+  'compris':       'Parfait ! Je suis là si vous avez besoin d\'autres informations.',
+  'vu':            'Parfait ! Je suis là si vous avez besoin d\'autres informations.',
+  '👍':            '😊 Je reste disponible pour toute question !',
+  '🙏':            'De rien ! À votre service. 😊',
+  '😊':            '😊 N\'hésitez pas si vous avez d\'autres questions !',
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 @Component({
@@ -118,7 +162,8 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   @ViewChild('iaMessagesContainer') iaMessagesContainer!: ElementRef;
   Math = Math;
-  private readonly API = 'https://localhost:7128/api';
+  private readonly API     = 'https://localhost:7128/api';
+  private readonly RAG_URL = 'http://localhost:8000';
 
   // ── Navigation ──────────────────────────────────────────────────────────────
   activeSection    = 'accueil';
@@ -142,13 +187,13 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   adminName    = '';
   adminEmail   = '';
   adminRole    = '';
-  platformName = 'WICMIC EnergyTracker v1';
+  // ✅ FIX: EnergyTracker → TriPower
+  platformName = 'WICMIC TriPower v1';
 
   // ── KPIs ────────────────────────────────────────────────────────────────────
   totalSites        = 0;
   totalEquipements  = 0;
   totalMesures      = 0;
-  totalAlertes      = 0;
   totalUtilisateurs = 0;
   zonesCount        = 0;
   santeSysteme      = 100;
@@ -162,7 +207,6 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   equipements:  Equipement[]  = [];
   mesures:      Mesure[]      = [];
   alertes:      Alerte[]      = [];
-  anomalies:    Anomalie[]    = [];
   sites:        Site[]        = [];
   zones:        Zone[]        = [];
   energies:     Energie[]     = [];
@@ -179,7 +223,7 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     labels: [], electricite: [], eau: [], gasoil: []
   };
 
-  // ── DATE FILTERS (global pour dashboard / mesures / alertes / stats) ────────
+  // ── DATE FILTERS ────────────────────────────────────────────────────────────
   filterDateDebut = '';
   filterDateFin   = '';
 
@@ -224,11 +268,8 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   mesureDateDebut     = '';
   mesureDateFin       = '';
   newMesure: Partial<Mesure> = {
-    valeur:       0,
-    dateMesure:   new Date().toISOString().slice(0, 16),
-    sourceDonnee: '',
-    energieId:    undefined,
-    equipementId: undefined
+    valeur: 0, dateMesure: new Date().toISOString().slice(0, 16),
+    sourceDonnee: '', energieId: undefined, equipementId: undefined
   };
 
   // ── Alertes UI ──────────────────────────────────────────────────────────────
@@ -241,9 +282,6 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   newAlerte: Partial<Alerte> = {
     type: '', message: '', statut: 'active', energieId: undefined, equipementId: undefined
   };
-
-  // ── Anomalies UI ────────────────────────────────────────────────────────────
-  searchAnomalie = '';
 
   // ── Énergies UI ─────────────────────────────────────────────────────────────
   searchEnergie     = '';
@@ -265,7 +303,10 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   showPassNouveau = false;
   showPassConfirm = false;
 
-  // ── IA ──────────────────────────────────────────────────────────────────────
+  // ── IA / Ollama ──────────────────────────────────────────────────────────────
+  ollamaUrl   = 'http://localhost:11434/api/generate';
+  ollamaModel = 'llama3';
+
   iaMessages: { role: 'user' | 'assistant'; content: string; timestamp: string }[] = [];
   iaInput          = '';
   iaLoading        = false;
@@ -322,7 +363,6 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.adminEmail = user.email;
     this.adminRole  = user.role;
 
-    // Default date range: last 30 days
     const today = new Date();
     const past  = new Date();
     past.setDate(today.getDate() - 30);
@@ -366,9 +406,6 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   // DATE FILTER HELPERS
   // ══════════════════════════════════════════════════════════════════════════════
 
-  /**
-   * Resets the date range filters to "all time"
-   */
   clearDateFilter(scope: 'mesures' | 'alertes' | 'global'): void {
     if (scope === 'mesures' || scope === 'global') {
       this.mesureDateDebut = '';
@@ -385,10 +422,6 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.mesuresPage = 1;
   }
 
-  /**
-   * Returns true if a date string falls within [debut, fin] (inclusive).
-   * If a bound is empty, it is treated as open.
-   */
   private dateInRange(dateStr: string, debut: string, fin: string): boolean {
     if (!debut && !fin) return true;
     try {
@@ -440,11 +473,6 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
         this.loading = false;
       }
     });
-
-    this.http.get<Anomalie[]>(`${this.API}/Anomalies`).subscribe({
-      next:  (data) => { this.anomalies = data || []; },
-      error: ()     => { this.anomalies = []; }
-    });
   }
 
   private refreshAfterChange(): void {
@@ -476,13 +504,6 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.http.get<Utilisateur[]>(`${this.API}/Utilisateurs`).subscribe({
       next:  data => { this.utilisateurs = data || []; this.totalUtilisateurs = this.utilisateurs.length; },
       error: ()   => this.showToast('Erreur rechargement utilisateurs', 'error')
-    });
-  }
-
-  reloadAnomalies(): void {
-    this.http.get<Anomalie[]>(`${this.API}/Anomalies`).subscribe({
-      next:  d => { this.anomalies = d || []; },
-      error: () => {}
     });
   }
 
@@ -533,6 +554,8 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   // ══════════════════════════════════════════════════════════════════════════════
   // KPIs
+  // ✅ FIX BUG ALERTES : on n'utilise plus totalAlertes comme compteur stocké.
+  //    alertesActives et alertesResolues sont des getters calculés en temps réel.
   // ══════════════════════════════════════════════════════════════════════════════
 
   computeKPIs(): void {
@@ -542,8 +565,7 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.totalSites        = this.sites.length;
     this.zonesCount        = this.zones.length;
 
-    this.totalAlertes = this.alertes.filter(a => isAlerteActive(a.statut)).length;
-    console.log(`[DEBUG] computeKPIs: ${this.alertes.length} alertes totales, ${this.totalAlertes} actives`);
+    console.log(`[DEBUG] computeKPIs: ${this.alertes.length} alertes totales, ${this.alertesActives} actives`);
 
     if (this.mesures.length) {
       const vals               = this.mesures.map(m => Number(m.valeur) || 0);
@@ -558,9 +580,9 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
       this.consommationMin     = 0;
     }
 
-    this.santeSysteme = this.totalAlertes === 0
+    this.santeSysteme = this.alertesActives === 0
       ? 100
-      : Math.max(0, Math.round(100 - (this.totalAlertes / Math.max(this.totalMesures, 1)) * 100));
+      : Math.max(0, Math.round(100 - (this.alertesActives / Math.max(this.totalMesures, 1)) * 100));
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -585,21 +607,12 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   computeRepartition(): void {
     const total = this.mesures.reduce((s, m) => s + (Number(m.valeur) || 0), 0);
-
-    if (!total || this.energies.length === 0) {
-      this.repartitionEnergies = [];
-      return;
-    }
-
+    if (!total || this.energies.length === 0) { this.repartitionEnergies = []; return; }
     this.repartitionEnergies = this.energies.map(energie => {
       const conso = this.mesures
         .filter(m => m.energieId === energie.idEnergie)
         .reduce((s, m) => s + (Number(m.valeur) || 0), 0);
-      return {
-        nom:     energie.nom,
-        pct:     Math.round((conso / total) * 100),
-        couleur: this.getEnergieColor(energie)
-      };
+      return { nom: energie.nom, pct: Math.round((conso / total) * 100), couleur: this.getEnergieColor(energie) };
     }).filter(e => e.pct > 0);
   }
 
@@ -617,14 +630,10 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!moisMap.has(key)) moisMap.set(key, new Map());
       const entry = moisMap.get(key)!;
-      const current = entry.get(m.energieId) ?? 0;
-      entry.set(m.energieId, current + (Number(m.valeur) || 0));
+      entry.set(m.energieId, (entry.get(m.energieId) ?? 0) + (Number(m.valeur) || 0));
     });
 
-    const sorted = Array.from(moisMap.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-7);
-
+    const sorted = Array.from(moisMap.entries()).sort((a, b) => a[0].localeCompare(b[0])).slice(-7);
     const elecId   = this.getEnergieIdByNom('elec');
     const eauId    = this.getEnergieIdByNom('eau');
     const gasoilId = this.getEnergieIdByNom('gas');
@@ -638,7 +647,7 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // NAVIGATION
+  // NAVIGATION — Anomalies supprimées
   // ══════════════════════════════════════════════════════════════════════════════
 
   navigate(section: string): void {
@@ -647,7 +656,6 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     if (section === 'utilisateurs')                                   this.reloadUtilisateurs();
     if (section === 'mesures')                                        this.reloadMesures();
     if (section === 'alertes-admin' || section === 'toutes-alertes') this.reloadAlertes();
-    if (section === 'anomalies')                                      this.reloadAnomalies();
     if (section === 'sites')                                          this.reloadSites();
     if (section === 'zones')                                          this.reloadZones();
     if (section === 'energies')                                       this.reloadEnergies();
@@ -656,7 +664,6 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   toggleSidebar(): void { this.sidebarCollapsed = !this.sidebarCollapsed; }
-
   logout(): void { this.auth.logout(); }
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -667,9 +674,7 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     if (!this.searchUser) return this.utilisateurs;
     const q = this.searchUser.toLowerCase();
     return this.utilisateurs.filter(u =>
-      u.nom.toLowerCase().includes(q)   ||
-      u.email.toLowerCase().includes(q) ||
-      u.role.toLowerCase().includes(q)
+      u.nom.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q)
     );
   }
 
@@ -685,7 +690,7 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   donutDash(pct: number):   number { return (pct / 100) * this.donutCircumference; }
 
   openNewUser(): void {
-    this.newUser     = { nom: '', email: '', password: '', role: 'employé' };
+    this.newUser = { nom: '', email: '', password: '', role: 'employé' };
     this.editingUser = null;
     this.showNewUserModal = true;
   }
@@ -703,25 +708,15 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     if (!this.editingUser && !this.newUser.password?.trim()) {
       this.showToast('Mot de passe requis', 'error'); return;
     }
-
     if (this.editingUser) {
       const payload = { ...this.editingUser, nom: this.newUser.nom, email: this.newUser.email, role: this.newUser.role };
       this.http.put(`${this.API}/Utilisateurs/${this.editingUser.idUtilisateur}`, payload).subscribe({
-        next: () => {
-          this.showNewUserModal = false;
-          this.editingUser = null;
-          this.reloadUtilisateurs();
-          this.showToast('Utilisateur modifié avec succès', 'success');
-        },
+        next: () => { this.showNewUserModal = false; this.editingUser = null; this.reloadUtilisateurs(); this.showToast('Utilisateur modifié avec succès', 'success'); },
         error: (e) => this.showToast('Erreur: ' + (e.error?.message || e.statusText), 'error')
       });
     } else {
       this.http.post<Utilisateur>(`${this.API}/Utilisateurs`, this.newUser).subscribe({
-        next: () => {
-          this.showNewUserModal = false;
-          this.reloadUtilisateurs();
-          this.showToast('Utilisateur créé avec succès', 'success');
-        },
+        next: () => { this.showNewUserModal = false; this.reloadUtilisateurs(); this.showToast('Utilisateur créé avec succès', 'success'); },
         error: (e) => this.showToast('Erreur: ' + (e.error?.message || e.statusText), 'error')
       });
     }
@@ -730,18 +725,12 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   deleteUser(id: number): void {
     if (!confirm('Supprimer cet utilisateur ?')) return;
     this.http.delete(`${this.API}/Utilisateurs/${id}`).subscribe({
-      next: () => {
-        this.utilisateurs = this.utilisateurs.filter(u => u.idUtilisateur !== id);
-        this.computeKPIs();
-        this.showToast('Utilisateur supprimé', 'success');
-      },
+      next: () => { this.utilisateurs = this.utilisateurs.filter(u => u.idUtilisateur !== id); this.computeKPIs(); this.showToast('Utilisateur supprimé', 'success'); },
       error: (e) => this.showToast('Erreur: ' + (e.error?.message || e.statusText), 'error')
     });
   }
 
-  getUserAvatar(nom: string): string {
-    return nom?.length > 0 ? nom[0].toUpperCase() : '?';
-  }
+  getUserAvatar(nom: string): string { return nom?.length > 0 ? nom[0].toUpperCase() : '?'; }
 
   // ══════════════════════════════════════════════════════════════════════════════
   // SITES — CRUD
@@ -751,55 +740,32 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     if (!this.searchSite) return this.sites;
     const q = this.searchSite.toLowerCase();
     return this.sites.filter(s =>
-      (s.nom         ?? '').toLowerCase().includes(q) ||
-      (s.adresse     ?? '').toLowerCase().includes(q) ||
-      (s.description ?? '').toLowerCase().includes(q)
+      (s.nom ?? '').toLowerCase().includes(q) || (s.adresse ?? '').toLowerCase().includes(q) || (s.description ?? '').toLowerCase().includes(q)
     );
   }
 
-  getSiteZonesCount(siteId: number): number {
-    return this.zones.filter(z => Number(z.siteId) === Number(siteId)).length;
-  }
-
+  getSiteZonesCount(siteId: number): number { return this.zones.filter(z => Number(z.siteId) === Number(siteId)).length; }
   getSiteEquipCount(siteId: number): number {
-    const zoneIds = this.zones
-      .filter(z => Number(z.siteId) === Number(siteId))
-      .map(z => z.idZone);
+    const zoneIds = this.zones.filter(z => Number(z.siteId) === Number(siteId)).map(z => z.idZone);
     return this.equipements.filter(e => e.zoneId !== undefined && zoneIds.includes(Number(e.zoneId))).length;
   }
 
-  openNewSite(): void {
-    this.newSite     = { nom: '', adresse: '', description: '' };
-    this.editingSite = null;
-    this.showSiteModal = true;
-  }
+  openNewSite(): void { this.newSite = { nom: '', adresse: '', description: '' }; this.editingSite = null; this.showSiteModal = true; }
 
   editSite(site: Site): void {
     this.editingSite = { ...site };
-    this.newSite = {
-      nom:         site.nom         ?? '',
-      adresse:     site.adresse     ?? '',
-      description: site.description ?? ''
-    };
+    this.newSite = { nom: site.nom ?? '', adresse: site.adresse ?? '', description: site.description ?? '' };
     this.showSiteModal = true;
   }
 
   saveSite(): void {
     const nomTrimmed = (this.newSite.nom ?? '').trim();
     if (!nomTrimmed) { this.showToast('Le nom du site est requis', 'error'); return; }
-
-    const payload = {
-      nom:         nomTrimmed,
-      adresse:     (this.newSite.adresse     ?? '').trim() || null,
-      description: (this.newSite.description ?? '').trim() || null,
-    };
-
+    const payload = { nom: nomTrimmed, adresse: (this.newSite.adresse ?? '').trim() || null, description: (this.newSite.description ?? '').trim() || null };
     if (this.editingSite) {
-      const fullPayload = { idSite: this.editingSite.idSite, ...payload };
-      this.http.put(`${this.API}/Sites/${this.editingSite.idSite}`, fullPayload).subscribe({
+      this.http.put(`${this.API}/Sites/${this.editingSite.idSite}`, { idSite: this.editingSite.idSite, ...payload }).subscribe({
         next: () => {
-          this.showSiteModal = false; this.editingSite = null;
-          this.newSite = { nom: '', adresse: '', description: '' };
+          this.showSiteModal = false; this.editingSite = null; this.newSite = { nom: '', adresse: '', description: '' };
           this.showToast('Site modifié avec succès', 'success');
           this.http.get<Site[]>(`${this.API}/Sites`).subscribe({ next: data => { this.sites = data || []; this.totalSites = this.sites.length; } });
         },
@@ -808,8 +774,7 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     } else {
       this.http.post<Site>(`${this.API}/Sites`, payload).subscribe({
         next: (created) => {
-          this.showSiteModal = false;
-          this.showToast('Site créé avec succès', 'success');
+          this.showSiteModal = false; this.showToast('Site créé avec succès', 'success');
           this.http.get<Site[]>(`${this.API}/Sites`).subscribe({
             next: data => { this.sites = data || []; this.totalSites = this.sites.length; this.newSite = { nom: '', adresse: '', description: '' }; },
             error: () => { this.sites = [...this.sites, created ?? { idSite: Date.now(), nom: payload.nom }]; this.totalSites = this.sites.length; this.newSite = { nom: '', adresse: '', description: '' }; }
@@ -834,27 +799,16 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   get filteredZones(): Zone[] {
     return this.zones.filter(z => {
-      const matchSearch = !this.searchZone ||
-        z.nom.toLowerCase().includes(this.searchZone.toLowerCase()) ||
-        (z.description ?? '').toLowerCase().includes(this.searchZone.toLowerCase());
-      const matchSite = !this.filtreZoneSite || String(z.siteId) === String(this.filtreZoneSite);
+      const matchSearch = !this.searchZone || z.nom.toLowerCase().includes(this.searchZone.toLowerCase()) || (z.description ?? '').toLowerCase().includes(this.searchZone.toLowerCase());
+      const matchSite   = !this.filtreZoneSite || String(z.siteId) === String(this.filtreZoneSite);
       return matchSearch && matchSite;
     });
   }
 
-  getSiteNom(siteId: number): string {
-    return this.sites.find(s => Number(s.idSite) === Number(siteId))?.nom ?? '—';
-  }
+  getSiteNom(siteId: number): string { return this.sites.find(s => Number(s.idSite) === Number(siteId))?.nom ?? '—'; }
+  getZoneEquipCount(zoneId: number): number { return this.equipements.filter(e => Number(e.zoneId) === Number(zoneId)).length; }
 
-  getZoneEquipCount(zoneId: number): number {
-    return this.equipements.filter(e => Number(e.zoneId) === Number(zoneId)).length;
-  }
-
-  openNewZone(): void {
-    this.newZone = { nom: '', siteId: undefined, description: '' };
-    this.editingZone = null;
-    this.showZoneModal = true;
-  }
+  openNewZone(): void { this.newZone = { nom: '', siteId: undefined, description: '' }; this.editingZone = null; this.showZoneModal = true; }
 
   editZone(zone: Zone): void {
     this.editingZone = { ...zone };
@@ -865,12 +819,8 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   saveZone(): void {
     if (!this.newZone.nom?.trim())  { this.showToast('Le nom de la zone est requis', 'error'); return; }
     if (!this.newZone.siteId)       { this.showToast('Veuillez sélectionner un site', 'error'); return; }
-
     const payload = { ...this.newZone, siteId: Number(this.newZone.siteId) };
-    const refreshZones = () => {
-      this.http.get<Zone[]>(`${this.API}/Zones`).subscribe({ next: data => { this.zones = data || []; this.zonesCount = this.zones.length; } });
-    };
-
+    const refreshZones = () => { this.http.get<Zone[]>(`${this.API}/Zones`).subscribe({ next: data => { this.zones = data || []; this.zonesCount = this.zones.length; } }); };
     if (this.editingZone) {
       this.http.put(`${this.API}/Zones/${this.editingZone.idZone}`, { ...this.editingZone, ...payload }).subscribe({
         next: () => { this.showZoneModal = false; this.editingZone = null; refreshZones(); this.showToast('Zone modifiée avec succès', 'success'); },
@@ -898,13 +848,10 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   get filteredEquipements(): Equipement[] {
     return this.equipements.filter(e => {
-      const zone = e.zone?.nom ?? '';
-      const type = e.typeEquipement ?? '';
+      const zone = e.zone?.nom ?? ''; const type = e.typeEquipement ?? '';
       const matchZone   = this.filtreZone === 'Toutes les zones' || zone === this.filtreZone;
       const matchType   = this.filtreType === 'Tous les types'   || type === this.filtreType;
-      const matchSearch = !this.searchEquipement ||
-        e.nom.toLowerCase().includes(this.searchEquipement.toLowerCase()) ||
-        type.toLowerCase().includes(this.searchEquipement.toLowerCase());
+      const matchSearch = !this.searchEquipement || e.nom.toLowerCase().includes(this.searchEquipement.toLowerCase()) || type.toLowerCase().includes(this.searchEquipement.toLowerCase());
       return matchZone && matchType && matchSearch;
     });
   }
@@ -921,13 +868,8 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   openNewEquipement(): void {
-    this.newEquipement = {
-      nom: '', typeEquipement: '', statut: 'actif', puissance: undefined,
-      energieId: this.energies.length > 0 ? this.energies[0].idEnergie : undefined,
-      zoneId: undefined, description: ''
-    };
-    this.editingEquipement = null;
-    this.showEquipementModal = true;
+    this.newEquipement = { nom: '', typeEquipement: '', statut: 'actif', puissance: undefined, energieId: this.energies.length > 0 ? this.energies[0].idEnergie : undefined, zoneId: undefined, description: '' };
+    this.editingEquipement = null; this.showEquipementModal = true;
   }
 
   editEquipement(eq: Equipement): void {
@@ -940,14 +882,7 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     if (!this.newEquipement.nom?.trim())            { this.showToast("Le nom de l'équipement est requis", 'error'); return; }
     if (!this.newEquipement.typeEquipement?.trim()) { this.showToast('Le type est requis', 'error'); return; }
     if (!this.newEquipement.energieId)              { this.showToast("Veuillez sélectionner un type d'énergie", 'error'); return; }
-
-    const payload = {
-      ...this.newEquipement,
-      energieId: Number(this.newEquipement.energieId),
-      zoneId:    this.newEquipement.zoneId    ? Number(this.newEquipement.zoneId)    : null,
-      puissance: this.newEquipement.puissance ? Number(this.newEquipement.puissance) : null
-    };
-
+    const payload = { ...this.newEquipement, energieId: Number(this.newEquipement.energieId), zoneId: this.newEquipement.zoneId ? Number(this.newEquipement.zoneId) : null, puissance: this.newEquipement.puissance ? Number(this.newEquipement.puissance) : null };
     if (this.editingEquipement) {
       this.http.put(`${this.API}/Equipements/${this.editingEquipement.idEquipement}`, { ...this.editingEquipement, ...payload }).subscribe({
         next: () => { this.showEquipementModal = false; this.editingEquipement = null; this.reloadEquipements(); this.showToast('Équipement modifié avec succès', 'success'); },
@@ -975,22 +910,11 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   get filteredMesures(): Mesure[] {
     let result = [...this.mesures];
-
-    // Date filter
-    if (this.mesureDateDebut || this.mesureDateFin) {
-      result = result.filter(m => this.dateInRange(m.dateMesure, this.mesureDateDebut, this.mesureDateFin));
-    }
-
+    if (this.mesureDateDebut || this.mesureDateFin) result = result.filter(m => this.dateInRange(m.dateMesure, this.mesureDateDebut, this.mesureDateFin));
     if (this.searchMesure) {
       const q = this.searchMesure.toLowerCase();
-      result  = result.filter(m =>
-        (m.energie?.nom    ?? '').toLowerCase().includes(q) ||
-        (m.sourceDonnee    ?? '').toLowerCase().includes(q) ||
-        (m.equipement?.nom ?? '').toLowerCase().includes(q) ||
-        String(m.valeur).includes(q)
-      );
+      result  = result.filter(m => (m.energie?.nom ?? '').toLowerCase().includes(q) || (m.sourceDonnee ?? '').toLowerCase().includes(q) || (m.equipement?.nom ?? '').toLowerCase().includes(q) || String(m.valeur).includes(q));
     }
-
     if      (this.sortMesure === 'Date — récent')        result.sort((a, b) => new Date(b.dateMesure).getTime() - new Date(a.dateMesure).getTime());
     else if (this.sortMesure === 'Date — ancien')        result.sort((a, b) => new Date(a.dateMesure).getTime() - new Date(b.dateMesure).getTime());
     else if (this.sortMesure === 'Valeur — croissant')   result.sort((a, b) => a.valeur - b.valeur);
@@ -998,47 +922,27 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     return result;
   }
 
-  get paginatedMesures(): Mesure[] {
-    const start = (this.mesuresPage - 1) * this.mesuresPerPage;
-    return this.filteredMesures.slice(start, start + this.mesuresPerPage);
-  }
-
-  get totalMesuresPages(): number { return Math.max(1, Math.ceil(this.filteredMesures.length / this.mesuresPerPage)); }
+  get paginatedMesures(): Mesure[] { const start = (this.mesuresPage - 1) * this.mesuresPerPage; return this.filteredMesures.slice(start, start + this.mesuresPerPage); }
+  get totalMesuresPages(): number  { return Math.max(1, Math.ceil(this.filteredMesures.length / this.mesuresPerPage)); }
 
   openNewMesure(): void {
-    this.newMesure = {
-      valeur: 0, dateMesure: new Date().toISOString().slice(0, 16), sourceDonnee: '',
-      energieId: this.energies.length > 0 ? this.energies[0].idEnergie : undefined, equipementId: undefined
-    };
-    this.editingMesure   = null;
-    this.showMesureModal = true;
+    this.newMesure = { valeur: 0, dateMesure: new Date().toISOString().slice(0, 16), sourceDonnee: '', energieId: this.energies.length > 0 ? this.energies[0].idEnergie : undefined, equipementId: undefined };
+    this.editingMesure = null; this.showMesureModal = true;
   }
 
   editMesure(mesure: Mesure): void {
     this.editingMesure = { ...mesure };
-    this.newMesure = {
-      valeur: mesure.valeur, dateMesure: mesure.dateMesure ? mesure.dateMesure.slice(0, 16) : new Date().toISOString().slice(0, 16),
-      sourceDonnee: mesure.sourceDonnee, energieId: mesure.energieId, equipementId: mesure.equipementId
-    };
+    this.newMesure = { valeur: mesure.valeur, dateMesure: mesure.dateMesure ? mesure.dateMesure.slice(0, 16) : new Date().toISOString().slice(0, 16), sourceDonnee: mesure.sourceDonnee, energieId: mesure.energieId, equipementId: mesure.equipementId };
     this.showMesureModal = true;
   }
 
   saveMesure(): void {
     if (this.newMesure.valeur === undefined || this.newMesure.valeur === null) { this.showToast('La valeur est requise', 'error'); return; }
-    if (!this.newMesure.energieId) { this.showToast("Veuillez sélectionner un type d'énergie", 'error'); return; }
+    if (!this.newMesure.energieId)           { this.showToast("Veuillez sélectionner un type d'énergie", 'error'); return; }
     if (!this.newMesure.sourceDonnee?.trim()) { this.showToast('La source de donnée est requise', 'error'); return; }
-
     const energie = this.energies.find(e => e.idEnergie === Number(this.newMesure.energieId));
     if (!energie) { this.showToast("Énergie introuvable, veuillez recharger la page", 'error'); return; }
-
-    const payload = {
-      valeur:       Number(this.newMesure.valeur),
-      dateMesure:   this.newMesure.dateMesure ? new Date(this.newMesure.dateMesure).toISOString() : new Date().toISOString(),
-      sourceDonnee: this.newMesure.sourceDonnee,
-      energieNom:   energie.nom,
-      equipementId: this.newMesure.equipementId ? Number(this.newMesure.equipementId) : null
-    };
-
+    const payload = { valeur: Number(this.newMesure.valeur), dateMesure: this.newMesure.dateMesure ? new Date(this.newMesure.dateMesure).toISOString() : new Date().toISOString(), sourceDonnee: this.newMesure.sourceDonnee, energieNom: energie.nom, equipementId: this.newMesure.equipementId ? Number(this.newMesure.equipementId) : null };
     if (this.editingMesure) {
       this.http.put(`${this.API}/Mesures/${this.editingMesure.idMesure}`, payload).subscribe({
         next: () => { this.showMesureModal = false; this.editingMesure = null; this.reloadMesures(); this.showToast('Mesure modifiée avec succès', 'success'); },
@@ -1061,31 +965,18 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   getNiveau(m: Mesure): 'Faible' | 'Normale' | 'Elevee' {
-    const max = this.consommationMax || 1;
-    const pct = (m.valeur / max) * 100;
-    if (pct >= 80) return 'Elevee';
-    if (pct >= 40) return 'Normale';
-    return 'Faible';
+    const max = this.consommationMax || 1; const pct = (m.valeur / max) * 100;
+    if (pct >= 80) return 'Elevee'; if (pct >= 40) return 'Normale'; return 'Faible';
   }
-
   getNiveauLabel(m: Mesure): string { return this.getNiveau(m); }
-
-  niveauBarWidth(valeur: number): number { return this.consommationMax ? Math.min((valeur / this.consommationMax) * 100, 100) : 0; }
-
-  niveauBarClass(niveau: string): string {
-    if (niveau === 'Elevee')  return 'red';
-    if (niveau === 'Normale') return 'amber';
-    return 'blue';
-  }
-
-  niveauChipClass(niveau: string): string {
-    if (niveau === 'Elevee')  return 'chip chip--red';
-    if (niveau === 'Normale') return 'chip chip--amber';
-    return 'chip chip--blue';
-  }
+  niveauBarWidth(valeur: number):  number { return this.consommationMax ? Math.min((valeur / this.consommationMax) * 100, 100) : 0; }
+  niveauBarClass(niveau: string):  string { if (niveau === 'Elevee') return 'red'; if (niveau === 'Normale') return 'amber'; return 'blue'; }
+  niveauChipClass(niveau: string): string { if (niveau === 'Elevee') return 'chip chip--red'; if (niveau === 'Normale') return 'chip chip--amber'; return 'chip chip--blue'; }
 
   // ══════════════════════════════════════════════════════════════════════════════
   // ALERTES — CRUD + DATE FILTER
+  // ✅ FIX : alertesActives et alertesResolues sont des GETTERS calculés
+  //    dynamiquement → toujours à jour, jamais figés à 0
   // ══════════════════════════════════════════════════════════════════════════════
 
   get alertesActives(): number  { return this.alertes.filter(a => isAlerteActive(a.statut)).length; }
@@ -1093,23 +984,14 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   get filteredAlertes(): Alerte[] {
     return this.alertes.filter(a => {
-      const matchSearch = !this.searchAlerte ||
-        (a.type    ?? '').toLowerCase().includes(this.searchAlerte.toLowerCase()) ||
-        (a.message ?? '').toLowerCase().includes(this.searchAlerte.toLowerCase());
-      const matchFiltre =
-        this.filtreAlerte === 'Toutes' ||
-        (this.filtreAlerte === 'Actives'  && isAlerteActive(a.statut))  ||
-        (this.filtreAlerte === 'Résolues' && isAlerteResolue(a.statut));
-      const matchDate = this.dateInRange(a.dateCreation, this.alerteDateDebut, this.alerteDateFin);
+      const matchSearch = !this.searchAlerte || (a.type ?? '').toLowerCase().includes(this.searchAlerte.toLowerCase()) || (a.message ?? '').toLowerCase().includes(this.searchAlerte.toLowerCase());
+      const matchFiltre = this.filtreAlerte === 'Toutes' || (this.filtreAlerte === 'Actives' && isAlerteActive(a.statut)) || (this.filtreAlerte === 'Résolues' && isAlerteResolue(a.statut));
+      const matchDate   = this.dateInRange(a.dateCreation, this.alerteDateDebut, this.alerteDateFin);
       return matchSearch && matchFiltre && matchDate;
     });
   }
 
-  openNewAlerte(): void {
-    this.newAlerte = { type: '', message: '', statut: 'active', energieId: undefined, equipementId: undefined };
-    this.editingAlerte = null;
-    this.showAlerteModal = true;
-  }
+  openNewAlerte(): void { this.newAlerte = { type: '', message: '', statut: 'active', energieId: undefined, equipementId: undefined }; this.editingAlerte = null; this.showAlerteModal = true; }
 
   editAlerte(alerte: Alerte): void {
     this.editingAlerte = { ...alerte };
@@ -1120,7 +1002,6 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   saveAlerte(): void {
     if (!this.newAlerte.type?.trim())    { this.showToast('Le type est requis', 'error'); return; }
     if (!this.newAlerte.message?.trim()) { this.showToast('Le message est requis', 'error'); return; }
-
     if (this.editingAlerte) {
       this.http.put(`${this.API}/Alertes/${this.editingAlerte.idAlerte}`, { ...this.editingAlerte, ...this.newAlerte }).subscribe({
         next: () => { this.showAlerteModal = false; this.editingAlerte = null; this.reloadAlertes(); this.showToast('Alerte modifiée avec succès', 'success'); },
@@ -1147,24 +1028,10 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
       next: () => {
         const idx = this.alertes.findIndex(a => a.idAlerte === alerte.idAlerte);
         if (idx !== -1) this.alertes[idx].statut = 'résolue';
-        this.computeKPIs();
-        this.showToast('Alerte résolue', 'success');
+        this.computeKPIs(); this.showToast('Alerte résolue', 'success');
       },
       error: (e) => this.showToast('Erreur: ' + (e.error?.message || e.statusText), 'error')
     });
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════════
-  // ANOMALIES
-  // ══════════════════════════════════════════════════════════════════════════════
-
-  get anomaliesActives():  number { return this.anomalies.filter(a => a.statut === 'active').length; }
-  get anomaliesTraitees(): number { return this.anomalies.filter(a => a.statut === 'traitée').length; }
-
-  get filteredAnomalies(): Anomalie[] {
-    if (!this.searchAnomalie) return this.anomalies;
-    const q = this.searchAnomalie.toLowerCase();
-    return this.anomalies.filter(a => (a.type ?? '').toLowerCase().includes(q) || (a.message ?? '').toLowerCase().includes(q));
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -1173,10 +1040,7 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   getEnergieEquipCount(energieId: number): number  { return this.equipements.filter(e => e.energieId === energieId).length; }
   getEnergieMesureCount(energieId: number): number { return this.mesures.filter(m => m.energieId === energieId).length; }
-
-  getEnergieConsommation(energieId: number): number {
-    return Math.round(this.mesures.filter(m => m.energieId === energieId).reduce((s, m) => s + (Number(m.valeur) || 0), 0) * 100) / 100;
-  }
+  getEnergieConsommation(energieId: number): number { return Math.round(this.mesures.filter(m => m.energieId === energieId).reduce((s, m) => s + (Number(m.valeur) || 0), 0) * 100) / 100; }
 
   get filteredEnergies(): Energie[] {
     if (!this.searchEnergie) return this.energies;
@@ -1204,11 +1068,7 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
     return '#8b5cf6';
   }
 
-  openNewEnergie(): void {
-    this.newEnergie = { nom: '', unite: '', description: '', facteurConversion: 1, couleur: '#6366f1' };
-    this.editingEnergie = null;
-    this.showEnergieModal = true;
-  }
+  openNewEnergie(): void { this.newEnergie = { nom: '', unite: '', description: '', facteurConversion: 1, couleur: '#6366f1' }; this.editingEnergie = null; this.showEnergieModal = true; }
 
   editEnergie(energie: Energie): void {
     this.editingEnergie = { ...energie };
@@ -1219,13 +1079,7 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   saveEnergie(): void {
     if (!this.newEnergie.nom?.trim())   { this.showToast("Le nom de l'énergie est requis", 'error'); return; }
     if (!this.newEnergie.unite?.trim()) { this.showToast("L'unité est requise", 'error'); return; }
-
-    const refreshEnergies = () => {
-      this.http.get<Energie[]>(`${this.API}/Energies`).subscribe({
-        next: data => { this.energies = data || []; this.computeRepartition(); this.computeChartData(); }
-      });
-    };
-
+    const refreshEnergies = () => { this.http.get<Energie[]>(`${this.API}/Energies`).subscribe({ next: data => { this.energies = data || []; this.computeRepartition(); this.computeChartData(); } }); };
     if (this.editingEnergie) {
       const payload: Energie = { idEnergie: this.editingEnergie.idEnergie, nom: this.newEnergie.nom!.trim(), unite: this.newEnergie.unite!.trim(), description: (this.newEnergie.description ?? '').trim() || undefined, facteurConversion: Number(this.newEnergie.facteurConversion) || 1, couleur: this.newEnergie.couleur ?? '#6366f1' };
       this.http.put<Energie>(`${this.API}/Energies/${this.editingEnergie.idEnergie}`, payload).subscribe({
@@ -1257,15 +1111,11 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   // ══════════════════════════════════════════════════════════════════════════════
 
   savePassword(): void {
-    if (!this.motDePasseActuel || !this.nouveauMotDePasse || !this.confirmerMotDePasse) {
-      this.showToast('Veuillez remplir tous les champs', 'error'); return;
-    }
+    if (!this.motDePasseActuel || !this.nouveauMotDePasse || !this.confirmerMotDePasse) { this.showToast('Veuillez remplir tous les champs', 'error'); return; }
     if (this.nouveauMotDePasse.length < 6) { this.showToast('Le mot de passe doit avoir au moins 6 caractères', 'error'); return; }
     if (this.nouveauMotDePasse !== this.confirmerMotDePasse) { this.showToast('Les mots de passe ne correspondent pas', 'error'); return; }
-
     const user = this.auth.getCurrentUser();
     if (!user) return;
-
     this.http.post(`${this.API}/Auth/reset-password`, { email: user.email, code: this.motDePasseActuel, newPassword: this.nouveauMotDePasse }).subscribe({
       next: () => { this.showToast('Mot de passe modifié avec succès !', 'success'); this.motDePasseActuel = this.nouveauMotDePasse = this.confirmerMotDePasse = ''; },
       error: (e) => this.showToast('Erreur: ' + (e.error?.message || e.statusText), 'error')
@@ -1273,33 +1123,8 @@ export class AdminComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // IA / LLM
+  // IA — sendIaMessage
   // ══════════════════════════════════════════════════════════════════════════════
-
-  get iaContext(): string {
-    const top3 = [...this.mesures].sort((a, b) => b.valeur - a.valeur).slice(0, 3)
-      .map(m => `${m.equipement?.nom ?? 'N/A'} (${m.valeur} ${m.energie?.unite ?? ''})`).join(', ');
-    const energiesSummary = this.energies.map(e => `${e.nom} (${e.unite}) — ${this.getEnergieMesureCount(e.idEnergie)} mesures, conso: ${this.getEnergieConsommation(e.idEnergie)}`).join('; ');
-    const repartitionStr  = this.repartitionEnergies.map(r => `${r.nom} ${r.pct}%`).join(', ') || 'N/A';
-
-    return `Tu es un assistant IA expert en gestion energetique pour la plateforme WICMIC EnergyTracker.
-Donnees TEMPS REEL (${new Date().toLocaleDateString('fr-FR')}) :
-- Sites industriels : ${this.totalSites}
-- Equipements actifs : ${this.totalEquipements}
-- Total mesures : ${this.mesures.length}
-- Consommation totale : ${this.consommationTotale}
-- Consommation moyenne : ${this.consommationMoyenne}
-- Maximum releve : ${this.consommationMax}
-- Minimum releve : ${this.consommationMin}
-- Alertes actives : ${this.totalAlertes}
-- Alertes resolues : ${this.alertesResolues}
-- Sante systeme : ${this.santeSysteme}%
-- Utilisateurs : ${this.totalUtilisateurs}
-- Repartition energies : ${repartitionStr}
-- Top 3 consommateurs : ${top3 || 'N/A'}
-- Energies configurees (${this.energies.length}) : ${energiesSummary || 'N/A'}
-Reponds en francais, de maniere concise, professionnelle et structuree avec des bullet points si pertinent.`;
-  }
 
   async sendIaMessage(text?: string): Promise<void> {
     const msg = text || this.iaInput.trim();
@@ -1312,19 +1137,62 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     this.iaTotalMessages++;
     this.shouldScrollChat = true;
 
+    if (isAdminSocialMessage(msg)) {
+      const normalized = msg.trim().toLowerCase().replace(/[!.,?]/g, '');
+      const response   = ADMIN_SOCIAL_RESPONSES[normalized]
+        ?? 'De rien ! Je suis disponible pour toute question sur la plateforme. 😊';
+      this.iaMessages.push({ role: 'assistant', content: response, timestamp: this.currentTime });
+      this.iaTotalMessages++;
+      this.iaLoading        = false;
+      this.shouldScrollChat = true;
+      return;
+    }
+
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch(`${this.RAG_URL}/chat`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: `${this.iaContext}\n\nQuestion: ${msg}` }] })
+        body: JSON.stringify({ prompt: msg, context: this.iaContext }),
       });
+
+      if (!response.ok) throw new Error(`FastAPI: ${response.status}`);
+
       const data          = await response.json();
-      const assistantText = data.content?.find((c: { type: string; text?: string }) => c.type === 'text')?.text ?? "Désolé, je n'ai pas pu traiter votre demande.";
+      const assistantText = data.response?.trim()
+        ?? "Désolé, je n'ai pas pu traiter votre demande.";
+
       this.iaMessages.push({ role: 'assistant', content: assistantText, timestamp: this.currentTime });
       this.iaTotalMessages++;
+
     } catch {
-      this.iaMessages.push({ role: 'assistant', content: 'Erreur de connexion au service IA. Veuillez réessayer.', timestamp: this.currentTime });
-      this.iaTotalMessages++;
+      try {
+        const response = await fetch(this.ollamaUrl, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model:  this.ollamaModel,
+            prompt: `${this.iaContext}\n\nQuestion: ${msg}`,
+            stream: false,
+          }),
+        });
+
+        if (!response.ok) throw new Error(`Ollama: ${response.status}`);
+
+        const data          = await response.json();
+        const assistantText = data.response?.trim()
+          ?? "Désolé, je n'ai pas pu traiter votre demande.";
+
+        this.iaMessages.push({ role: 'assistant', content: assistantText, timestamp: this.currentTime });
+        this.iaTotalMessages++;
+
+      } catch {
+        this.iaMessages.push({
+          role:      'assistant',
+          content:   'Impossible de joindre le service IA. Vérifiez que FastAPI et Ollama tournent.',
+          timestamp: this.currentTime,
+        });
+        this.iaTotalMessages++;
+      }
     }
 
     this.iaLoading        = false;
@@ -1343,12 +1211,37 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     this.showToast('Conversation exportée', 'success');
   }
 
-  iaKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendIaMessage(); }
+  iaKeydown(e: KeyboardEvent): void { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendIaMessage(); } }
+
+  // ✅ FIX : TriPower dans le contexte IA
+  get iaContext(): string {
+    const top3 = [...this.mesures].sort((a, b) => b.valeur - a.valeur).slice(0, 3)
+      .map(m => `${m.equipement?.nom ?? 'N/A'} (${m.valeur} ${m.energie?.unite ?? ''})`).join(', ');
+    const energiesSummary = this.energies.map(e =>
+      `${e.nom} (${e.unite}) — ${this.getEnergieMesureCount(e.idEnergie)} mesures, conso: ${this.getEnergieConsommation(e.idEnergie)}`
+    ).join('; ');
+    const repartitionStr = this.repartitionEnergies.map(r => `${r.nom} ${r.pct}%`).join(', ') || 'N/A';
+    return `Tu es un assistant IA expert en gestion energetique pour la plateforme WICMIC TriPower.
+Donnees TEMPS REEL (${new Date().toLocaleDateString('fr-FR')}) :
+- Sites industriels : ${this.totalSites}
+- Equipements actifs : ${this.totalEquipements}
+- Total mesures : ${this.mesures.length}
+- Consommation totale : ${this.consommationTotale}
+- Consommation moyenne : ${this.consommationMoyenne}
+- Maximum releve : ${this.consommationMax}
+- Minimum releve : ${this.consommationMin}
+- Alertes actives : ${this.alertesActives}
+- Alertes resolues : ${this.alertesResolues}
+- Sante systeme : ${this.santeSysteme}%
+- Utilisateurs : ${this.totalUtilisateurs}
+- Repartition energies : ${repartitionStr}
+- Top 3 consommateurs : ${top3 || 'N/A'}
+- Energies configurees (${this.energies.length}) : ${energiesSummary || 'N/A'}
+Reponds en francais, de maniere concise, professionnelle et structuree avec des bullet points si pertinent.`;
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // EXCEL EXPORT  (uses SheetJS loaded from CDN)
+  // EXCEL EXPORT
   // ══════════════════════════════════════════════════════════════════════════════
 
   private async loadSheetJS(): Promise<any> {
@@ -1362,14 +1255,9 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     });
   }
 
-  /**
-   * Generic helper: convert an array-of-arrays to an xlsx and trigger download.
-   * rows[0] = header row (strings), rows[1..] = data rows.
-   */
   private async writeExcel(rows: any[][], sheetName: string, filename: string): Promise<void> {
     const XLSX  = await this.loadSheetJS();
     const ws    = XLSX.utils.aoa_to_sheet(rows);
-    // Auto column widths
     const maxCols = rows[0]?.length ?? 0;
     ws['!cols']   = Array.from({ length: maxCols }, (_, ci) => {
       const maxLen = Math.min(40, Math.max(...rows.map(r => String(r[ci] ?? '').length), String(rows[0][ci] ?? '').length));
@@ -1380,21 +1268,14 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     XLSX.writeFile(wb, filename);
   }
 
-  /** Export mesures to Excel with current date filter applied */
   async exportMesuresExcel(): Promise<void> {
     this.exportingExcel = true;
     try {
       const data = this.filteredMesures;
-      const dateRange = this.mesureDateDebut || this.mesureDateFin
-        ? ` (${this.mesureDateDebut || '…'} → ${this.mesureDateFin || '…'})`
-        : '';
+      const dateRange = this.mesureDateDebut || this.mesureDateFin ? ` (${this.mesureDateDebut || '…'} → ${this.mesureDateFin || '…'})` : '';
       const rows: any[][] = [
         ['#', 'Valeur', 'Unité', 'Énergie', 'Niveau', 'Source', 'Équipement', 'Date mesure'],
-        ...data.map((m, i) => [
-          i + 1, m.valeur, m.energie?.unite ?? '', m.energie?.nom ?? '',
-          this.getNiveauLabel(m), m.sourceDonnee, m.equipement?.nom ?? '',
-          this.formatDate(m.dateMesure)
-        ])
+        ...data.map((m, i) => [i + 1, m.valeur, m.energie?.unite ?? '', m.energie?.nom ?? '', this.getNiveauLabel(m), m.sourceDonnee, m.equipement?.nom ?? '', this.formatDate(m.dateMesure)])
       ];
       await this.writeExcel(rows, 'Mesures', `wicmic-mesures${dateRange}.xlsx`);
       this.showToast(`Excel mesures exporté (${data.length} lignes)`, 'success');
@@ -1402,17 +1283,13 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     this.exportingExcel = false;
   }
 
-  /** Export alertes to Excel with current date filter applied */
   async exportAlertesExcel(): Promise<void> {
     this.exportingExcel = true;
     try {
       const data = this.filteredAlertes;
       const rows: any[][] = [
         ['#', 'Type', 'Message', 'Statut', 'Énergie', 'Équipement', 'Date création'],
-        ...data.map((a, i) => [
-          i + 1, a.type, a.message, a.statut, a.energie?.nom ?? '', a.equipement?.nom ?? '',
-          this.formatDate(a.dateCreation)
-        ])
+        ...data.map((a, i) => [i + 1, a.type, a.message, a.statut, a.energie?.nom ?? '', a.equipement?.nom ?? '', this.formatDate(a.dateCreation)])
       ];
       await this.writeExcel(rows, 'Alertes', `wicmic-alertes.xlsx`);
       this.showToast(`Excel alertes exporté (${data.length} lignes)`, 'success');
@@ -1420,17 +1297,12 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     this.exportingExcel = false;
   }
 
-  /** Export équipements to Excel */
   async exportEquipementsExcel(): Promise<void> {
     this.exportingExcel = true;
     try {
       const rows: any[][] = [
         ['ID', 'Nom', 'Type', 'Site', 'Zone', 'Énergie', 'Puissance (W)', 'Statut'],
-        ...this.equipements.map(e => [
-          e.idEquipement, e.nom, e.typeEquipement,
-          this.getSiteFromZone(e.zoneId), e.zone?.nom ?? '', e.energie?.nom ?? '',
-          e.puissance ?? '', e.statut
-        ])
+        ...this.equipements.map(e => [e.idEquipement, e.nom, e.typeEquipement, this.getSiteFromZone(e.zoneId), e.zone?.nom ?? '', e.energie?.nom ?? '', e.puissance ?? '', e.statut])
       ];
       await this.writeExcel(rows, 'Équipements', 'wicmic-equipements.xlsx');
       this.showToast('Excel équipements exporté', 'success');
@@ -1438,17 +1310,12 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     this.exportingExcel = false;
   }
 
-  /** Export énergies to Excel */
   async exportEnergiesExcel(): Promise<void> {
     this.exportingExcel = true;
     try {
       const rows: any[][] = [
         ['ID', 'Nom', 'Unité', 'Description', 'Facteur conv.', 'Équipements', 'Mesures', 'Conso. totale'],
-        ...this.energies.map(e => [
-          e.idEnergie, e.nom, e.unite, e.description ?? '', e.facteurConversion ?? 1,
-          this.getEnergieEquipCount(e.idEnergie), this.getEnergieMesureCount(e.idEnergie),
-          this.getEnergieConsommation(e.idEnergie)
-        ])
+        ...this.energies.map(e => [e.idEnergie, e.nom, e.unite, e.description ?? '', e.facteurConversion ?? 1, this.getEnergieEquipCount(e.idEnergie), this.getEnergieMesureCount(e.idEnergie), this.getEnergieConsommation(e.idEnergie)])
       ];
       await this.writeExcel(rows, 'Énergies', 'wicmic-energies.xlsx');
       this.showToast('Excel énergies exporté', 'success');
@@ -1456,66 +1323,31 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     this.exportingExcel = false;
   }
 
-  /** Export synthèse globale to Excel */
+  // ✅ FIX : TriPower dans le rapport Excel
   async exportSyntheseExcel(): Promise<void> {
     this.exportingExcel = true;
     try {
-      const XLSX   = await this.loadSheetJS();
-      const wb     = XLSX.utils.book_new();
-      const now    = new Date().toLocaleDateString('fr-FR');
-
-      // Sheet 1 – KPIs
+      const XLSX = await this.loadSheetJS(); const wb = XLSX.utils.book_new(); const now = new Date().toLocaleDateString('fr-FR');
       const kpiRows: any[][] = [
-        ['Rapport WICMIC EnergyTracker', '', `Généré le ${now}`],
-        [],
+        ['Rapport WICMIC TriPower', '', `Généré le ${now}`], [],
         ['INDICATEUR', 'VALEUR', 'STATUT'],
-        ['Sites',              this.totalSites,        '✅'],
-        ['Zones',              this.zonesCount,        '✅'],
-        ['Équipements',        this.totalEquipements,  '✅'],
-        ['Mesures',            this.totalMesures,      '✅'],
-        ['Alertes actives',    this.totalAlertes,      this.totalAlertes > 0 ? '⚠️' : '✅'],
-        ['Alertes résolues',   this.alertesResolues,   '✅'],
-        ['Utilisateurs',       this.totalUtilisateurs, '✅'],
-        ['Conso. totale',      this.consommationTotale, '—'],
-        ['Conso. moyenne',     this.consommationMoyenne,'—'],
-        ['Maximum relevé',     this.consommationMax,   '—'],
-        ['Minimum relevé',     this.consommationMin,   '—'],
-        ['Santé système (%)',  this.santeSysteme,      this.santeSysteme >= 80 ? '✅' : '⚠️'],
-        [],
-        ['RÉPARTITION ÉNERGÉTIQUE'],
-        ['Énergie', 'Part (%)'],
+        ['Sites', this.totalSites, '✅'], ['Zones', this.zonesCount, '✅'], ['Équipements', this.totalEquipements, '✅'],
+        ['Mesures', this.totalMesures, '✅'], ['Alertes actives', this.alertesActives, this.alertesActives > 0 ? '⚠️' : '✅'],
+        ['Alertes résolues', this.alertesResolues, '✅'], ['Utilisateurs', this.totalUtilisateurs, '✅'],
+        ['Conso. totale', this.consommationTotale, '—'], ['Conso. moyenne', this.consommationMoyenne, '—'],
+        ['Maximum relevé', this.consommationMax, '—'], ['Minimum relevé', this.consommationMin, '—'],
+        ['Santé système (%)', this.santeSysteme, this.santeSysteme >= 80 ? '✅' : '⚠️'], [],
+        ['RÉPARTITION ÉNERGÉTIQUE'], ['Énergie', 'Part (%)'],
         ...this.repartitionEnergies.map(r => [r.nom, r.pct]),
       ];
-      const wsKpi = XLSX.utils.aoa_to_sheet(kpiRows);
-      wsKpi['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 12 }];
+      const wsKpi = XLSX.utils.aoa_to_sheet(kpiRows); wsKpi['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 12 }];
       XLSX.utils.book_append_sheet(wb, wsKpi, 'Synthèse');
-
-      // Sheet 2 – Mesures (filtered)
-      const meRows: any[][] = [
-        ['#', 'Valeur', 'Unité', 'Énergie', 'Niveau', 'Source', 'Équipement', 'Date'],
-        ...this.filteredMesures.map((m, i) => [
-          i + 1, m.valeur, m.energie?.unite ?? '', m.energie?.nom ?? '',
-          this.getNiveauLabel(m), m.sourceDonnee, m.equipement?.nom ?? '', this.formatDate(m.dateMesure)
-        ])
-      ];
+      const meRows: any[][] = [['#', 'Valeur', 'Unité', 'Énergie', 'Niveau', 'Source', 'Équipement', 'Date'], ...this.filteredMesures.map((m, i) => [i+1, m.valeur, m.energie?.unite ?? '', m.energie?.nom ?? '', this.getNiveauLabel(m), m.sourceDonnee, m.equipement?.nom ?? '', this.formatDate(m.dateMesure)])];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(meRows), 'Mesures');
-
-      // Sheet 3 – Alertes (filtered)
-      const alRows: any[][] = [
-        ['#', 'Type', 'Message', 'Statut', 'Énergie', 'Équipement', 'Date création'],
-        ...this.filteredAlertes.map((a, i) => [
-          i + 1, a.type, a.message, a.statut, a.energie?.nom ?? '', a.equipement?.nom ?? '', this.formatDate(a.dateCreation)
-        ])
-      ];
+      const alRows: any[][] = [['#', 'Type', 'Message', 'Statut', 'Énergie', 'Équipement', 'Date création'], ...this.filteredAlertes.map((a, i) => [i+1, a.type, a.message, a.statut, a.energie?.nom ?? '', a.equipement?.nom ?? '', this.formatDate(a.dateCreation)])];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(alRows), 'Alertes');
-
-      // Sheet 4 – Sites
-      const siRows: any[][] = [
-        ['ID', 'Nom', 'Adresse', 'Description', 'Zones', 'Équipements'],
-        ...this.sites.map(s => [s.idSite, s.nom, s.adresse ?? '', s.description ?? '', this.getSiteZonesCount(s.idSite), this.getSiteEquipCount(s.idSite)])
-      ];
+      const siRows: any[][] = [['ID', 'Nom', 'Adresse', 'Description', 'Zones', 'Équipements'], ...this.sites.map(s => [s.idSite, s.nom, s.adresse ?? '', s.description ?? '', this.getSiteZonesCount(s.idSite), this.getSiteEquipCount(s.idSite)])];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(siRows), 'Sites');
-
       const dateFile = `${String(new Date().getDate()).padStart(2,'0')}-${String(new Date().getMonth()+1).padStart(2,'0')}-${new Date().getFullYear()}`;
       XLSX.writeFile(wb, `wicmic-rapport-complet-${dateFile}.xlsx`);
       this.showToast('Rapport Excel complet exporté (4 feuilles)', 'success');
@@ -1531,58 +1363,33 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     if (this.exportingPDF) return;
     this.exportingPDF = true;
     this.showToast(`Génération du PDF "${type}"...`, 'info');
-
     try {
       const jsPDF = await this.loadJsPDF();
       const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageW  = doc.internal.pageSize.getWidth();
       const pageH  = doc.internal.pageSize.getHeight();
-      const margin = 14;
-      const usable = pageW - margin * 2;
-      const C      = this.PDF_COLORS;
-      const now    = new Date();
-
-      let y = 34;
-
-      const newPage = () => { doc.addPage(); this.pdfPageHeader(doc, pageW, pageH, type, margin); y = 34; };
-      const checkY  = (needed: number) => { if (y + needed > pageH - 14) newPage(); };
-
+      const margin = 14; const usable = pageW - margin * 2;
+      const C = this.PDF_COLORS; const now = new Date(); let y = 34;
+      const newPage  = () => { doc.addPage(); this.pdfPageHeader(doc, pageW, pageH, type, margin); y = 34; };
+      const checkY   = (needed: number) => { if (y + needed > pageH - 14) newPage(); };
       this.pdfPageHeader(doc, pageW, pageH, type, margin);
-
-      this.pdfTxt(doc, 'Rapport Énergétique Global', margin, y, C.navy, 16, true);
-      y += 5;
-      this.pdfTxt(doc, `Opérateur : ${this.adminName}   |   ${this.platformName}`, margin, y, C.textMuted, 7.5);
-      y += 4;
-      this.pdfSetFill(doc, C.indigo);
-      doc.rect(margin, y, usable, 1, 'F');
-      y += 6;
-
+      this.pdfTxt(doc, 'Rapport Énergétique Global', margin, y, C.navy, 16, true); y += 5;
+      this.pdfTxt(doc, `Opérateur : ${this.adminName}   |   ${this.platformName}`, margin, y, C.textMuted, 7.5); y += 4;
+      this.pdfSetFill(doc, C.indigo); doc.rect(margin, y, usable, 1, 'F'); y += 6;
       const kpis = [
         { label: 'Sites',         value: String(this.totalSites),        rgb: C.blue   },
         { label: 'Zones',         value: String(this.zonesCount),        rgb: C.indigo },
         { label: 'Equipements',   value: String(this.totalEquipements),  rgb: C.purple },
         { label: 'Mesures',       value: String(this.totalMesures),      rgb: C.amber  },
-        { label: 'Alertes act.',  value: String(this.totalAlertes),      rgb: this.totalAlertes > 0 ? C.red : C.green },
+        { label: 'Alertes act.',  value: String(this.alertesActives),    rgb: this.alertesActives > 0 ? C.red : C.green },
         { label: 'Resolues',      value: String(this.alertesResolues),   rgb: C.green  },
         { label: 'Utilisateurs',  value: String(this.totalUtilisateurs), rgb: C.cyan   },
         { label: 'Sante systeme', value: `${this.santeSysteme}%`,        rgb: this.santeSysteme >= 80 ? C.green : C.red },
       ];
-
-      const gap = 3, nCols = 4;
-      const cardW = (usable - gap * (nCols - 1)) / nCols;
-      const cardH = 22;
-
-      [0, 4].forEach(offset => {
-        kpis.slice(offset, offset + nCols).forEach((kpi, i) => {
-          this.pdfKpiCard(doc, margin + i * (cardW + gap), y, cardW, cardH, kpi.value, kpi.label, kpi.rgb);
-        });
-        y += cardH + gap;
-      });
-      y += 4;
-
-      checkY(46);
+      const gap = 3, nCols = 4, cardW = (usable - gap * (nCols - 1)) / nCols, cardH = 22;
+      [0, 4].forEach(offset => { kpis.slice(offset, offset + nCols).forEach((kpi, i) => { this.pdfKpiCard(doc, margin + i * (cardW + gap), y, cardW, cardH, kpi.value, kpi.label, kpi.rgb); }); y += cardH + gap; });
+      y += 4; checkY(46);
       y = this.pdfSection(doc, 'CONSOMMATION ENERGETIQUE', 'Indicateurs', margin, y, usable);
-
       const consoItems = [
         { label: 'Consommation totale',  value: String(this.consommationTotale),  rgb: C.indigo },
         { label: 'Consommation moyenne', value: String(this.consommationMoyenne), rgb: C.blue   },
@@ -1591,20 +1398,14 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
       ];
       const cW = (usable - gap) / 2, cH = 12;
       consoItems.forEach((item, i) => {
-        const cx = margin + (i % 2) * (cW + gap);
-        const cy = y + Math.floor(i / 2) * (cH + 3);
-        this.pdfRR(doc, cx, cy, cW, cH, C.grayBg, 2);
-        this.pdfSetFill(doc, item.rgb);
-        doc.rect(cx, cy, 3, cH, 'F');
+        const cx = margin + (i % 2) * (cW + gap), cy = y + Math.floor(i / 2) * (cH + 3);
+        this.pdfRR(doc, cx, cy, cW, cH, C.grayBg, 2); this.pdfSetFill(doc, item.rgb); doc.rect(cx, cy, 3, cH, 'F');
         this.pdfTxt(doc, item.label, cx + 6, cy + 5,   C.textMuted, 7);
-        this.pdfTxt(doc, item.value, cx + 6, cy + 9.5, item.rgb,    9, true);
+        this.pdfTxt(doc, item.value, cx + 6, cy + 9.5, item.rgb, 9, true);
       });
-      y += (cH + 3) * 2 + 5;
-
-      checkY(38);
+      y += (cH + 3) * 2 + 5; checkY(38);
       y = this.pdfSection(doc, 'REPARTITION ENERGETIQUE', '', margin, y, usable);
       const labelW = 30, pctW = 10, barW = usable - labelW - pctW - 4;
-
       if (this.repartitionEnergies.length > 0) {
         this.repartitionEnergies.forEach(rep => {
           const rgb = this.hexToRgb(rep.couleur) ?? C.blue;
@@ -1613,129 +1414,59 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
           this.pdfTxt(doc, `${rep.pct}%`, margin + labelW + barW + 3, y + 4.5, rgb, 7.5, true);
           y += 10;
         });
-      } else {
-        this.pdfTxt(doc, 'Aucune donnée de répartition disponible', margin, y + 4.5, C.textMuted, 8);
-        y += 10;
-      }
-      y += 3;
-
-      checkY(62);
+      } else { this.pdfTxt(doc, 'Aucune donnée de répartition disponible', margin, y + 4.5, C.textMuted, 8); y += 10; }
+      y += 3; checkY(62);
       y = this.pdfSection(doc, 'EVOLUTION MENSUELLE', '7 derniers mois', margin, y, usable);
-      this.pdfBarChart(doc, margin, y + 10, usable, 46);
-      y += 64;
-
+      this.pdfBarChart(doc, margin, y + 10, usable, 46); y += 64;
       newPage();
-      this.pdfTxt(doc, 'Alertes & Mesures', margin, y, C.navy, 14, true);
-      y += 7;
-
+      this.pdfTxt(doc, 'Alertes & Mesures', margin, y, C.navy, 14, true); y += 7;
       y = this.pdfSection(doc, 'ALERTES SYSTEME', `${this.alertesActives} active(s) · ${this.alertesResolues} résolue(s)`, margin, y, usable, C.red);
-
       if (this.alertes.length === 0) {
         this.pdfRR(doc, margin, y, usable, 10, C.green, 2);
-        this.pdfTxt(doc, 'Aucune alerte — Systeme nominal', pageW / 2, y + 7, C.white, 9, true, 'center');
-        y += 15;
+        this.pdfTxt(doc, 'Aucune alerte — Systeme nominal', pageW / 2, y + 7, C.white, 9, true, 'center'); y += 15;
       } else {
-        const alertH = [
-          { title: 'TYPE',       w: 28 }, { title: 'MESSAGE',    w: 68 }, { title: 'STATUT',     w: 22 },
-          { title: 'ENERGIE',    w: 26 }, { title: 'EQUIPEMENT', w: 30 }, { title: 'DATE',       w: usable - 174 },
-        ];
+        const alertH = [{ title: 'TYPE', w: 28 }, { title: 'MESSAGE', w: 68 }, { title: 'STATUT', w: 22 }, { title: 'ENERGIE', w: 26 }, { title: 'EQUIPEMENT', w: 30 }, { title: 'DATE', w: usable - 174 }];
         const alertR = this.alertes.slice(0, 25).map(a => [
-          { text: a.type    ?? '—', bold: true },
-          { text: a.message ?? '—' },
+          { text: a.type ?? '—', bold: true }, { text: a.message ?? '—' },
           { text: isAlerteActive(a.statut) ? 'ACTIVE' : 'RESOLUE', badge: { rgb: isAlerteActive(a.statut) ? C.red : C.green } },
-          { text: a.energie?.nom    ?? '—' },
-          { text: a.equipement?.nom ?? '—' },
-          { text: this.formatDateShort(a.dateCreation) },
+          { text: a.energie?.nom ?? '—' }, { text: a.equipement?.nom ?? '—' }, { text: this.formatDateShort(a.dateCreation) },
         ]);
-        y = this.pdfTable(doc, alertH, alertR, margin, y, pageW, pageH, margin, type, C.red);
-        y += 6;
+        y = this.pdfTable(doc, alertH, alertR, margin, y, pageW, pageH, margin, type, C.red); y += 6;
       }
-
       checkY(20);
       y = this.pdfSection(doc, 'DERNIERES MESURES', `${Math.min(this.mesures.length, 25)} sur ${this.totalMesures}`, margin, y, usable, C.amber);
-
-      const mesH = [
-        { title: '#',          w: 8,  align: 'center' as const }, { title: 'VALEUR',     w: 22 },
-        { title: 'UNITE',      w: 14 }, { title: 'ENERGIE',    w: 28 },
-        { title: 'NIVEAU',     w: 22, align: 'center' as const }, { title: 'SOURCE',     w: 30 },
-        { title: 'EQUIPEMENT', w: 32 }, { title: 'DATE',       w: usable - 156 },
-      ];
-
-      const nRgb = (m: Mesure): [number, number, number] => {
-        const n = this.getNiveau(m);
-        if (n === 'Elevee')  return C.red;
-        if (n === 'Normale') return C.amber;
-        return C.blue;
-      };
-
-      const mesR = [...this.mesures].sort((a, b) => new Date(b.dateMesure).getTime() - new Date(a.dateMesure).getTime()).slice(0, 25)
-        .map((m, i) => [
-          { text: String(i + 1),    align: 'center' as const }, { text: String(m.valeur), bold: true },
-          { text: m.energie?.unite ?? '—' }, { text: m.energie?.nom   ?? '—' },
-          { text: this.getNiveauLabel(m), badge: { rgb: nRgb(m) } }, { text: m.sourceDonnee   ?? '—' },
-          { text: m.equipement?.nom ?? '—' }, { text: this.formatDateShort(m.dateMesure) },
-        ]);
-
-      y = this.pdfTable(doc, mesH, mesR, margin, y, pageW, pageH, margin, type, C.amber);
-
-      newPage();
-      this.pdfTxt(doc, 'Infrastructure & Utilisateurs', margin, y, C.navy, 14, true);
-      y += 7;
-
-      y = this.pdfSection(doc, 'SITES INDUSTRIELS', `${this.totalSites} sites`, margin, y, usable, C.blue);
-      const siteH = [
-        { title: 'ID',      w: 12, align: 'center' as const }, { title: 'NOM',     w: 48 },
-        { title: 'ADRESSE', w: 80 }, { title: 'ZONES',   w: 22, align: 'center' as const },
-        { title: 'EQUIP.',  w: usable - 162, align: 'center' as const },
-      ];
-      const siteR = this.sites.map(s => [
-        { text: String(s.idSite), align: 'center' as const }, { text: s.nom, bold: true },
-        { text: s.adresse ?? '—' }, { text: String(this.getSiteZonesCount(s.idSite)), badge: { rgb: C.indigo } },
-        { text: String(this.getSiteEquipCount(s.idSite)), badge: { rgb: C.purple } },
+      const mesH = [{ title: '#', w: 8, align: 'center' as const }, { title: 'VALEUR', w: 22 }, { title: 'UNITE', w: 14 }, { title: 'ENERGIE', w: 28 }, { title: 'NIVEAU', w: 22, align: 'center' as const }, { title: 'SOURCE', w: 30 }, { title: 'EQUIPEMENT', w: 32 }, { title: 'DATE', w: usable - 156 }];
+      const nRgb = (m: Mesure): [number, number, number] => { const n = this.getNiveau(m); if (n === 'Elevee') return C.red; if (n === 'Normale') return C.amber; return C.blue; };
+      const mesR = [...this.mesures].sort((a, b) => new Date(b.dateMesure).getTime() - new Date(a.dateMesure).getTime()).slice(0, 25).map((m, i) => [
+        { text: String(i + 1), align: 'center' as const }, { text: String(m.valeur), bold: true },
+        { text: m.energie?.unite ?? '—' }, { text: m.energie?.nom ?? '—' },
+        { text: this.getNiveauLabel(m), badge: { rgb: nRgb(m) } }, { text: m.sourceDonnee ?? '—' },
+        { text: m.equipement?.nom ?? '—' }, { text: this.formatDateShort(m.dateMesure) },
       ]);
-      y = this.pdfTable(doc, siteH, siteR, margin, y, pageW, pageH, margin, type, C.blue);
-      y += 6;
-
+      y = this.pdfTable(doc, mesH, mesR, margin, y, pageW, pageH, margin, type, C.amber);
+      newPage();
+      this.pdfTxt(doc, 'Infrastructure & Utilisateurs', margin, y, C.navy, 14, true); y += 7;
+      y = this.pdfSection(doc, 'SITES INDUSTRIELS', `${this.totalSites} sites`, margin, y, usable, C.blue);
+      const siteH = [{ title: 'ID', w: 12, align: 'center' as const }, { title: 'NOM', w: 48 }, { title: 'ADRESSE', w: 80 }, { title: 'ZONES', w: 22, align: 'center' as const }, { title: 'EQUIP.', w: usable - 162, align: 'center' as const }];
+      const siteR = this.sites.map(s => [{ text: String(s.idSite), align: 'center' as const }, { text: s.nom, bold: true }, { text: s.adresse ?? '—' }, { text: String(this.getSiteZonesCount(s.idSite)), badge: { rgb: C.indigo } }, { text: String(this.getSiteEquipCount(s.idSite)), badge: { rgb: C.purple } }]);
+      y = this.pdfTable(doc, siteH, siteR, margin, y, pageW, pageH, margin, type, C.blue); y += 6;
       checkY(20);
       y = this.pdfSection(doc, 'COMPTES UTILISATEURS', `${this.totalUtilisateurs} compte(s)`, margin, y, usable, C.purple);
-
-      const roleRgb = (role: string): [number, number, number] => {
-        const r = role.toLowerCase();
-        if (r.includes('admin'))                        return C.red;
-        if (r.includes('electricite'))                  return C.blue;
-        if (r.includes('eau'))                          return C.cyan;
-        if (r.includes('gaz') || r.includes('gasoil')) return C.amber;
-        if (r.includes('responsable'))                  return C.indigo;
-        return C.green;
-      };
-
-      const userH = [
-        { title: 'NOM COMPLET', w: 60 }, { title: 'EMAIL', w: 80 }, { title: 'ROLE', w: usable - 140, align: 'center' as const },
-      ];
-      const userR = this.utilisateurs.map(u => [
-        { text: u.nom, bold: true }, { text: u.email }, { text: this.getRoleLabel(u.role), badge: { rgb: roleRgb(u.role) } },
-      ]);
+      const roleRgb = (role: string): [number, number, number] => { const r = role.toLowerCase(); if (r.includes('admin')) return C.red; if (r.includes('electricite')) return C.blue; if (r.includes('eau')) return C.cyan; if (r.includes('gaz') || r.includes('gasoil')) return C.amber; if (r.includes('responsable') || r.includes('energie')) return C.indigo; return C.green; };
+      const userH = [{ title: 'NOM COMPLET', w: 60 }, { title: 'EMAIL', w: 80 }, { title: 'ROLE', w: usable - 140, align: 'center' as const }];
+      const userR = this.utilisateurs.map(u => [{ text: u.nom, bold: true }, { text: u.email }, { text: this.getRoleLabel(u.role), badge: { rgb: roleRgb(u.role) } }]);
       y = this.pdfTable(doc, userH, userR, margin, y, pageW, pageH, margin, type, C.purple);
-
       const totalPages = (doc.internal as any).getNumberOfPages();
-      for (let p = 1; p <= totalPages; p++) {
-        doc.setPage(p);
-        this.pdfPageFooter(doc, pageW, pageH, margin, p, totalPages);
-      }
-
+      for (let p = 1; p <= totalPages; p++) { doc.setPage(p); this.pdfPageFooter(doc, pageW, pageH, margin, p, totalPages); }
       const dateFile = `${String(now.getDate()).padStart(2,'0')}-${String(now.getMonth()+1).padStart(2,'0')}-${now.getFullYear()}`;
       doc.save(`wicmic-rapport-${type.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${dateFile}.pdf`);
       this.showToast(`PDF "${type}" téléchargé !`, 'success');
-    } catch (err) {
-      console.error('Erreur PDF:', err);
-      this.showToast('Erreur lors de la génération du PDF', 'error');
-    }
-
+    } catch (err) { console.error('Erreur PDF:', err); this.showToast('Erreur lors de la génération du PDF', 'error'); }
     this.exportingPDF = false;
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // PDF helpers (unchanged from original)
+  // PDF HELPERS
   // ══════════════════════════════════════════════════════════════════════════════
 
   private async loadJsPDF(): Promise<any> {
@@ -1743,7 +1474,7 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
       script.src   = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-      script.onload = () => (window as any).jspdf?.jsPDF ? resolve((window as any).jspdf.jsPDF) : reject(new Error('jsPDF introuvable'));
+      script.onload  = () => (window as any).jspdf?.jsPDF ? resolve((window as any).jspdf.jsPDF) : reject(new Error('jsPDF introuvable'));
       script.onerror = () => reject(new Error('Impossible de charger jsPDF'));
       document.head.appendChild(script);
     });
@@ -1755,11 +1486,12 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     return [parseInt(clean.substring(0,2),16), parseInt(clean.substring(2,4),16), parseInt(clean.substring(4,6),16)];
   }
 
+  // ✅ FIX : TriPower dans l'en-tête PDF
   private pdfPageHeader(doc: any, pageW: number, _pageH: number, type: string, margin: number): void {
     const C = this.PDF_COLORS;
     this.pdfSetFill(doc, C.navy); doc.rect(0, 0, pageW, 14, 'F');
     this.pdfSetFill(doc, C.indigo); doc.rect(0, 14, pageW, 2, 'F');
-    this.pdfTxt(doc, 'WICMIC EnergyTracker', margin, 9.5, C.white, 9, true);
+    this.pdfTxt(doc, 'WICMIC TriPower', margin, 9.5, C.white, 9, true);
     this.pdfTxt(doc, `Rapport : ${type}`, pageW / 2, 9.5, C.cyan, 8, false, 'center');
     this.pdfTxt(doc, new Date().toLocaleDateString('fr-FR'), pageW - margin, 9.5, C.white, 8, false, 'right');
   }
@@ -1777,9 +1509,7 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
 
   private pdfSetFill(doc: any, rgb: [number,number,number]): void { doc.setFillColor(rgb[0], rgb[1], rgb[2]); }
 
-  private pdfRR(doc: any, x: number, y: number, w: number, h: number, rgb: [number,number,number], _r = 2): void {
-    this.pdfSetFill(doc, rgb); doc.rect(x, y, w, h, 'F');
-  }
+  private pdfRR(doc: any, x: number, y: number, w: number, h: number, rgb: [number,number,number], _r = 2): void { this.pdfSetFill(doc, rgb); doc.rect(x, y, w, h, 'F'); }
 
   private pdfKpiCard(doc: any, x: number, y: number, w: number, h: number, value: string, label: string, rgb: [number,number,number]): void {
     const C = this.PDF_COLORS;
@@ -1810,7 +1540,6 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
     const elecNom = this.energies.find(e => this.isElec(e.nom))?.nom ?? 'Électricité';
     const eauNom  = this.energies.find(e => this.isEau(e.nom))?.nom  ?? 'Eau';
     const gasNom  = this.energies.find(e => this.isGasoil(e.nom))?.nom ?? 'Gasoil';
-
     labels.forEach((label, i) => {
       const cx = x + i * colW;
       [{ values: this.chartData.electricite, rgb: C.blue }, { values: this.chartData.eau, rgb: C.cyan }, { values: this.chartData.gasoil, rgb: C.amber }].forEach((s, si) => {
@@ -1828,19 +1557,13 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
   }
 
   private pdfTable(doc: any, headers: { title: string; w: number; align?: string }[], rows: { text: string; bold?: boolean; align?: string; badge?: { rgb: [number,number,number] } }[][], x: number, y: number, pageW: number, pageH: number, margin: number, type: string, _accent: [number,number,number]): number {
-    const C = this.PDF_COLORS, rowH = 7.5, headH = 8;
-    const totalW = headers.reduce((s, h) => s + h.w, 0);
-
+    const C = this.PDF_COLORS, rowH = 7.5, headH = 8, totalW = headers.reduce((s, h) => s + h.w, 0);
     const drawHeader = (yy: number) => {
       this.pdfSetFill(doc, C.navy); doc.rect(x, yy, totalW, headH, 'F');
       let cx = x;
-      headers.forEach(h => {
-        this.pdfTxt(doc, h.title, cx + (h.align === 'center' ? h.w / 2 : 3), yy + 5.5, C.white, 6.5, true, (h.align as any) ?? 'left');
-        cx += h.w;
-      });
+      headers.forEach(h => { this.pdfTxt(doc, h.title, cx + (h.align === 'center' ? h.w / 2 : 3), yy + 5.5, C.white, 6.5, true, (h.align as any) ?? 'left'); cx += h.w; });
       return yy + headH;
     };
-
     y = drawHeader(y);
     rows.forEach((row, ri) => {
       if (y + rowH > pageH - 14) { doc.addPage(); this.pdfPageHeader(doc, pageW, pageH, type, margin); y = 34; y = drawHeader(y); }
@@ -1860,25 +1583,19 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
         }
         cx += col.w;
       });
-      this.pdfSetFill(doc, C.grayLine); doc.rect(x, y + rowH - 0.2, totalW, 0.2, 'F');
-      y += rowH;
+      this.pdfSetFill(doc, C.grayLine); doc.rect(x, y + rowH - 0.2, totalW, 0.2, 'F'); y += rowH;
     });
     return y;
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // LEGACY CSV (kept for backward compat) — now delegates to Excel
+  // LEGACY CSV
   // ══════════════════════════════════════════════════════════════════════════════
 
-  exportCSV():        void { this.exportEquipementsExcel(); }
-  exportEnergiesCSV():void { this.exportEnergiesExcel(); }
-  exportMesuresCSV(): void { this.exportMesuresExcel(); }
-
-  exportRapportCSV(type: string): void {
-    if (type === 'mesures')  { this.exportMesuresExcel(); return; }
-    if (type === 'energies') { this.exportEnergiesExcel(); return; }
-    this.exportSyntheseExcel();
-  }
+  exportCSV():         void { this.exportEquipementsExcel(); }
+  exportEnergiesCSV(): void { this.exportEnergiesExcel(); }
+  exportMesuresCSV():  void { this.exportMesuresExcel(); }
+  exportRapportCSV(type: string): void { if (type === 'mesures') { this.exportMesuresExcel(); return; } if (type === 'energies') { this.exportEnergiesExcel(); return; } this.exportSyntheseExcel(); }
 
   // ══════════════════════════════════════════════════════════════════════════════
   // HORLOGE
@@ -1924,8 +1641,7 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
   }
 
   getEquipTypeIcon(type: string): string {
-    if (!type) return '⚙️';
-    const t = type.toLowerCase();
+    if (!type) return '⚙️'; const t = type.toLowerCase();
     if (t.includes('textile') || t.includes('machine'))    return '🏭';
     if (t.includes('moteur')  || t.includes('électrique')) return '⚡';
     if (t.includes('pompe'))                               return '🔧';
@@ -1933,8 +1649,7 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
   }
 
   getEnergyIcon(energieNom: string): string {
-    if (!energieNom) return '⚡';
-    const n = energieNom.toLowerCase();
+    if (!energieNom) return '⚡'; const n = energieNom.toLowerCase();
     if (n.includes('eau'))                           return '💧';
     if (n.includes('elec') || n.includes('électr')) return '⚡';
     if (n.includes('gas')  || n.includes('gasoil')) return '🛢️';
@@ -1944,8 +1659,7 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
   getEnergyIconFromObj(energie?: { nom: string }): string  { return this.getEnergyIcon(energie?.nom ?? ''); }
 
   getEnergyClass(energieNom: string): string {
-    if (!energieNom) return '';
-    const n = energieNom.toLowerCase();
+    if (!energieNom) return ''; const n = energieNom.toLowerCase();
     if (n.includes('eau'))                           return 'energie-eau';
     if (n.includes('elec') || n.includes('électr')) return 'energie-elec';
     return 'energie-gasoil';
@@ -1996,7 +1710,7 @@ Reponds en francais, de maniere concise, professionnelle et structuree avec des 
 
   trackById(index: number, item: any): number {
     return item?.idUtilisateur ?? item?.idEquipement ?? item?.idMesure ?? item?.idAlerte
-      ?? item?.idAnomalie ?? item?.idSite ?? item?.idZone ?? item?.idEnergie ?? index;
+      ?? item?.idSite ?? item?.idZone ?? item?.idEnergie ?? index;
   }
 
   get chartMax(): number {

@@ -1,0 +1,41 @@
+.import-container {
+  max-width: 500px;
+  margin: 60px auto;
+  padding: 40px;
+  background: #1e1e2e;
+  border-radius: 16px;
+  text-align: center;
+  color: #fff;
+}
+
+h2 { font-size: 1.6rem; margin-bottom: 8px; }
+.subtitle { color: #aaa; margin-bottom: 32px; }
+
+.upload-zone {
+  border: 2px dashed #6366f1;
+  border-radius: 12px;
+  padding: 40px 20px;
+  cursor: pointer;
+  margin-bottom: 24px;
+  transition: background 0.2s;
+}
+.upload-zone:hover { background: #2a2a3e; }
+.upload-zone .icon { font-size: 2rem; }
+.upload-zone p { margin-top: 12px; color: #ccc; }
+
+.btn-importer {
+  background: #6366f1;
+  color: white;
+  border: none;
+  padding: 12px 32px;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-importer:hover:not(:disabled) { background: #4f46e5; }
+.btn-importer:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.message { margin-top: 24px; padding: 12px; border-radius: 8px; }
+.success { background: #14532d; color: #86efac; }
+.erreur  { background: #7f1d1d; color: #fca5a5; }

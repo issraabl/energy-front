@@ -1,0 +1,17 @@
+<div class="import-container">
+  <h2>Importer des Mesures</h2>
+  <p class="subtitle">Importez vos mesures depuis un fichier Excel (.xlsx)</p>
+
+  <div class="upload-zone" (click)="fileInput.click()">
+    <span class="icon">📂</span>
+    <p>{{ fichierSelectionne ? fichierSelectionne.name : 'Cliquez pour sélectionner un fichier .xlsx' }}</p>
+    <input #fileInput type="file" accept=".xlsx" hidden (change)="onFichierChange($event)" />
+  </div>
+
+  <button class="btn-importer" (click)="importer()" [disabled]="enCours || !fichierSelectionne">
+    {{ enCours ? 'Import en cours...' : 'Importer' }}
+  </button>
+
+  <div class="message success" *ngIf="message">✅ {{ message }}</div>
+  <div class="message erreur"  *ngIf="erreur">❌ {{ erreur }}</div>
+</div>

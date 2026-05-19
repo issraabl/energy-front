@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Observable, of, throwError } from 'rxjs';
+import { Observable, of } from 'rxjs';
 import { timeout, catchError, switchMap, tap } from 'rxjs/operators';
 
 import {
@@ -13,7 +13,8 @@ import {
 @Injectable({ providedIn: 'root' })
 export class ApiService {
 
-  private BASE = 'https://localhost:7128/api';
+  private BASE    = 'https://localhost:7128/api';
+  private RAG_URL = 'http://localhost:8000';
 
   constructor(private http: HttpClient) {}
 
@@ -31,28 +32,18 @@ export class ApiService {
     );
   }
 
-  /**
-   * POST — propage l'erreur brute pour que l'appelant puisse afficher
-   * un message précis (status HTTP, message backend, etc.)
-   */
   private post<T>(path: string, body: any): Observable<T> {
     return this.http.post<T>(`${this.BASE}/${path}`, body, { headers: this.getHeaders() }).pipe(
       tap({ error: err => console.error(`POST /${path}`, err) })
     );
   }
 
-  /**
-   * PUT — idem, propage l'erreur brute.
-   */
   private put<T>(path: string, body: any): Observable<T> {
     return this.http.put<T>(`${this.BASE}/${path}`, body, { headers: this.getHeaders() }).pipe(
       tap({ error: err => console.error(`PUT /${path}`, err) })
     );
   }
 
-  /**
-   * DELETE — idem, propage l'erreur brute.
-   */
   private delete<T>(path: string): Observable<T> {
     return this.http.delete<T>(`${this.BASE}/${path}`, { headers: this.getHeaders() }).pipe(
       tap({ error: err => console.error(`DELETE /${path}`, err) })
@@ -284,12 +275,20 @@ export class ApiService {
   }
 
   // ════════════════════════════════════════════
-  // OLLAMA — IA CHAT
+  // OLLAMA — IA CHAT  ← FastAPI RAG en priorité
   // ════════════════════════════════════════════
 
   ollamaChat(prompt: string): Observable<{ response: string }> {
-    const systemPrompt =
-      `Tu es un assistant expert en gestion énergétique industrielle pour l'entreprise WICMIC (industrie textile en Tunisie).
+    // ── 1. FastAPI RAG (http://localhost:8000/chat) ───────────────────────
+    return this.http.post<{ response: string }>(
+      `${this.RAG_URL}/chat`,
+      { prompt, context: '' }
+    ).pipe(
+      timeout(300000),
+      catchError(() => {
+        // ── 2. Fallback backend .NET original ────────────────────────────
+        const systemPrompt =
+          `Tu es un assistant expert en gestion énergétique industrielle pour WICMIC (industrie textile en Tunisie).
 RÈGLES ABSOLUES :
 1. Tu réponds TOUJOURS en français, sans exception.
 2. Tu es concis et précis (maximum 5-6 phrases).
@@ -299,20 +298,22 @@ RÈGLES ABSOLUES :
 
 ${prompt}`;
 
-    return this.http.post<{ response: string }>(
-      `${this.BASE}/Ollama/chat`,
-      { prompt: systemPrompt },
-      { headers: this.getHeaders() }
-    ).pipe(
-      timeout(300000),
-      catchError(err => {
-        if (err?.name === 'TimeoutError') {
-          return of({ response: '⏳ Délai dépassé. Le modèle est en cours de chargement — réessayez dans 30 secondes.' });
-        }
-        const msg = err?.error?.response
-          ?? err?.error?.message
-          ?? '⚠️ Service IA indisponible. Vérifiez qu\'Ollama est lancé sur le port 11434.';
-        return of({ response: msg });
+        return this.http.post<{ response: string }>(
+          `${this.BASE}/Ollama/chat`,
+          { prompt: systemPrompt },
+          { headers: this.getHeaders() }
+        ).pipe(
+          timeout(300000),
+          catchError(err => {
+            if (err?.name === 'TimeoutError') {
+              return of({ response: '⏳ Délai dépassé. Le modèle est en cours de chargement — réessayez dans 30 secondes.' });
+            }
+            const msg = err?.error?.response
+              ?? err?.error?.message
+              ?? '⚠️ Service IA indisponible. Vérifiez qu\'Ollama est lancé sur le port 11434.';
+            return of({ response: msg });
+          })
+        );
       })
     );
   }

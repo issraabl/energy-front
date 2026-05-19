@@ -15,6 +15,7 @@ import { ViewerComponent }               from './pages/viewer/viewer.component';
 import { WaterDashboardComponent }       from './pages/energy/water/water-dashboard/water-dashboard.component';
 import { GasDashboardComponent }         from './pages/energy/gas/gas-dashboard/gas-dashboard.component';
 import { ElectricityDashboardComponent } from './pages/energy/electricity/electricity-dashboard/electricity-dashboard.component';
+import { ImportMesuresComponent } from './pages/import-mesures/import-mesures.component';
 
 const ALL_ENERGY_ROLES = [
   'administrateur',
@@ -76,7 +77,8 @@ const routes: Routes = [
     canActivate: [AuthGuard, RoleGuard],
     data: { roles: ['employe', 'administrateur'] },
   },
-
+  { path: 'import-mesures', component: ImportMesuresComponent },
+  
   { path: '**', redirectTo: 'login' },
 ];
 

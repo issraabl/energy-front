@@ -110,15 +110,6 @@
       </a>
 
       <div class="sidebar__nav-divider"></div>
-      <div class="sidebar__nav-group" *ngIf="!sidebarCollapsed">ANALYSE</div>
-
-      <a class="sidebar__nav-item" [class.sidebar__nav-item--active]="activeSection==='anomalies'" (click)="navigate('anomalies')" title="Anomalies">
-        <span class="sidebar__nav-icon">🔍</span>
-        <span class="sidebar__nav-label" *ngIf="!sidebarCollapsed">Anomalies</span>
-        <span class="sidebar__nav-badge sidebar__nav-badge--red" *ngIf="anomaliesActives > 0">{{ anomaliesActives }}</span>
-      </a>
-
-      <div class="sidebar__nav-divider"></div>
 
       <a class="sidebar__nav-item sidebar__nav-item--logout" (click)="logout()" title="Déconnexion">
         <span class="sidebar__nav-icon">🚪</span>
@@ -135,7 +126,7 @@
       <div class="page__header">
         <div>
           <h1 class="page__title">Bienvenue, <span class="text--accent">{{ adminName }}</span> 👑</h1>
-          <p class="page__subtitle">Tableau de bord Administrateur — WICMIC EnergyTracker · {{ currentDate }}</p>
+          <p class="page__subtitle">Tableau de bord Administrateur — WICMIC TriPower · {{ currentDate }}</p>
         </div>
         <div class="page__actions">
           <button class="btn btn--outline" (click)="loadAllData()">🔄 Actualiser</button>
@@ -1001,7 +992,6 @@
     </section>
 
     <!-- ══ STATISTIQUES ══ -->
-    <!-- PATCH 4 applied: Excel button added alongside PDF in date-range actions -->
     <section *ngIf="activeSection==='statistiques'" class="page">
       <div class="page-banner">
         <div class="page-banner__chip">📊 Analytics</div>
@@ -1014,7 +1004,6 @@
             <div class="date-range__field"><label>DÉBUT</label><input type="date" [(ngModel)]="statsDebut"/></div>
             <div class="date-range__field"><label>FIN</label><input type="date" [(ngModel)]="statsFin"/></div>
             <button class="btn btn--primary" (click)="loadAllData()">▶ Appliquer</button>
-            <!-- PATCH 4: PDF + Excel buttons -->
             <button class="btn btn--outline-light" (click)="exportRapportPDF('Statistiques')" [disabled]="exportingPDF">📄 PDF</button>
             <button class="btn btn--success" (click)="exportSyntheseExcel()" [disabled]="exportingExcel">
               {{ exportingExcel ? '⏳…' : '📊 Excel' }}
@@ -1067,7 +1056,7 @@
         <div class="page-banner__header">
           <div>
             <h1 class="page-banner__title">Gestion des <span class="text--accent">Mesures</span></h1>
-            <p class="page-banner__sub">Données temps réel — API EnergyTracker</p>
+            <p class="page-banner__sub">Données temps réel — API TriPower</p>
           </div>
           <div class="banner-kpis">
             <div class="banner-kpi"><span class="banner-kpi__val text--cyan">{{ mesures.length }}</span><span class="banner-kpi__lab">RELEVÉS</span></div>
@@ -1086,9 +1075,7 @@
         <div class="stat-card stat-card--green"><span class="stat-card__val">{{ consommationMin }}</span><span class="stat-card__lab">Minimum</span></div>
       </div>
 
-      <!-- PATCH 1: Mesures toolbar with date filter + Excel export -->
       <div class="toolbar">
-        <!-- Date range filter -->
         <div class="date-filter-bar">
           <span class="date-filter-bar__label">📅 Période</span>
           <input type="date" [(ngModel)]="mesureDateDebut" class="date-input" title="Du"/>
@@ -1097,8 +1084,6 @@
           <button class="btn btn--sm btn--outline" (click)="clearDateFilter('mesures')" title="Réinitialiser">✕</button>
           <span class="search-bar__count" *ngIf="mesureDateDebut || mesureDateFin">{{ filteredMesures.length }} résultat(s)</span>
         </div>
-
-        <!-- Search + sort -->
         <div class="search-bar" style="flex:1">
           <span>🔍</span>
           <input type="text" placeholder="Valeur, source, équipement, énergie..." [(ngModel)]="searchMesure" class="search-bar__input"/>
@@ -1255,9 +1240,7 @@
         </div>
       </div>
 
-      <!-- PATCH 2: Alertes toolbar with date filter + Excel export -->
       <div class="toolbar">
-        <!-- Date range filter -->
         <div class="date-filter-bar">
           <span class="date-filter-bar__label">📅 Période</span>
           <input type="date" [(ngModel)]="alerteDateDebut" class="date-input" title="Du"/>
@@ -1265,7 +1248,6 @@
           <input type="date" [(ngModel)]="alerteDateFin" class="date-input" title="Au"/>
           <button class="btn btn--sm btn--outline" (click)="clearDateFilter('alertes')" title="Réinitialiser">✕</button>
         </div>
-
         <div class="search-bar" style="flex:1">
           <span>🔍</span>
           <input type="text" placeholder="Type, message..." [(ngModel)]="searchAlerte" class="search-bar__input"/>
@@ -1409,7 +1391,6 @@
         </div>
       </div>
 
-      <!-- PATCH 3: Replaced CSV section with Excel multi-sheet export -->
       <div class="card">
         <div class="card__header">
           <span class="card__title">📊 Export Excel (.xlsx)</span>
@@ -1458,7 +1439,7 @@
       <div class="page-banner">
         <div class="page-banner__header">
           <div>
-            <span class="ia-status">● CLAUDE EN LIGNE — WICMIC ENERGYTRACKER</span>
+            <span class="ia-status">● CHAT EN LIGNE — WICMIC TriPower</span>
             <h1 class="page-banner__title">Assistant IA Énergétique 🤖</h1>
             <p class="page-banner__sub">Posez vos questions sur vos données réelles · Alimenté par Claude</p>
           </div>
@@ -1542,50 +1523,6 @@
             </div>
           </div>
         </div>
-      </div>
-    </section>
-
-    <!-- ══ ANOMALIES ══ -->
-    <section *ngIf="activeSection==='anomalies'" class="page">
-      <div class="page-banner">
-        <div class="page-banner__chip" style="background:rgba(239,68,68,.2);color:#fca5a5;border-color:rgba(239,68,68,.3)">🔍 Détection automatique</div>
-        <div class="page-banner__header">
-          <div>
-            <h1 class="page-banner__title">Anomalies <span class="text--danger">détectées</span></h1>
-            <p class="page-banner__sub">{{ anomaliesActives }} en cours · {{ anomaliesTraitees }} résolues · {{ anomalies.length }} total</p>
-          </div>
-          <div class="page-banner__actions">
-            <button class="btn btn--outline-light" (click)="reloadAnomalies()">🔄 Actualiser</button>
-          </div>
-        </div>
-      </div>
-      <div class="anomalie-stats">
-        <div class="anomalie-stat"><span class="anomalie-stat__val text--danger">{{ anomaliesActives }}</span><span class="anomalie-stat__dot">●</span><span class="anomalie-stat__lab">ACTIVES</span></div>
-        <div class="anomalie-stat"><span class="anomalie-stat__val text--success">{{ anomaliesTraitees }}</span><span class="anomalie-stat__dot">✅</span><span class="anomalie-stat__lab">TRAITÉES</span></div>
-        <div class="anomalie-stat"><span class="anomalie-stat__val">{{ anomalies.length }}</span><span class="anomalie-stat__dot">📊</span><span class="anomalie-stat__lab">TOTAL</span></div>
-      </div>
-      <div class="toolbar">
-        <div class="search-bar" style="flex:1">
-          <span>🔍</span>
-          <input type="text" placeholder="Type, message..." [(ngModel)]="searchAnomalie" class="search-bar__input"/>
-        </div>
-      </div>
-      <div class="card empty-state--card" *ngIf="filteredAnomalies.length === 0">
-        <span>🔍</span><h3>Aucune anomalie</h3>
-        <p class="muted">{{ searchAnomalie ? 'Modifiez votre recherche.' : 'Aucune anomalie détectée — Système nominal.' }}</p>
-      </div>
-      <div class="card" *ngIf="filteredAnomalies.length > 0">
-        <table class="data-table">
-          <thead><tr><th>TYPE</th><th>MESSAGE</th><th>STATUT</th><th>DATE</th></tr></thead>
-          <tbody>
-            <tr *ngFor="let a of filteredAnomalies; trackBy: trackById">
-              <td><strong>{{ a.type }}</strong></td>
-              <td class="muted">{{ a.message }}</td>
-              <td><span class="chip" [class]="a.statut === 'active' ? 'chip--red' : 'chip--green'">{{ a.statut }}</span></td>
-              <td class="muted tabnum">{{ formatDate(a.dateCreation) }}</td>
-            </tr>
-          </tbody>
-        </table>
       </div>
     </section>
 

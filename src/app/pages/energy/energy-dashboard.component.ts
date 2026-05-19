@@ -1,13 +1,18 @@
-import { Component, OnInit, OnDestroy, AfterViewChecked, ElementRef, ViewChild, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ElementRef, ViewChild, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import {
   ReactiveFormsModule, FormsModule,
   FormBuilder, FormGroup, Validators
 } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
+import { timeout, catchError } from 'rxjs/operators';
+import { of } from 'rxjs';
+import * as XLSX from 'xlsx';
 
 import { ApiService }  from '../../core/api/api.service';
 import { AuthService } from '../../core/auth/auth.service';
+import { AiService, PrevisionIA, BenchmarkIA } from '../../core/ai/ai.service';
 import {
   Mesure, Recommandation,
   Equipement, Energie, Zone, OllamaMessage
@@ -74,6 +79,28 @@ const TARIFS_PAR_NOM: Record<string, number> = {
   [NOM_EAU]:         0.85,
   [NOM_GAZOIL]:      2.10,
 };
+
+// ─── Détection sociale ────────────────────────────────────────────────────────
+const SOCIAL_WORDS = new Set([
+  'merci', 'thanks', 'thank you', 'super', 'parfait', 'ok', 'okay',
+  'bien', 'bonne journée', 'bonsoir', 'bonjour', 'salut', 'hello',
+  'au revoir', 'bye', 'nickel', 'top', 'cool', "d'accord", 'daccord',
+  'compris', 'vu', '👍', '🙏', '😊',
+]);
+
+const BUSINESS_WORDS = [
+  'consomm', 'kwh', 'énergi', 'energi', 'alert', 'équip', 'equip',
+  'mesur', 'anomali', 'rapport', 'score', 'prévi', 'previ',
+  'benchmark', 'eau', 'gazoil', 'électri', 'electri', 'compresseur',
+  'réduct', 'reduc', 'seuil', 'tendance', 'analyse', 'factur',
+];
+
+function isSocialMessage(msg: string): boolean {
+  const normalized = msg.trim().toLowerCase().replace(/[!.,?]/g, '');
+  const words      = normalized.split(/\s+/);
+  return SOCIAL_WORDS.has(normalized)
+    || (words.length <= 4 && !BUSINESS_WORDS.some(kw => normalized.includes(kw)));
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -166,6 +193,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
 
   // ── Chat IA ────────────────────────────────────────────────────────────────
   showChat = false; messages: OllamaMessage[] = []; chatInput = ''; chatLoading = false;
+  private readonly RAG_URL = 'http://localhost:8000';
 
   // ── Heatmap ────────────────────────────────────────────────────────────────
   offHoursMode   = false;
@@ -177,6 +205,13 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   benchmarkData: BenchmarkItem[] = [];
   rankTimeline:  { label: string; pct: number }[] = [];
 
+  // ── IA Status ─────────────────────────────────────────────────────────────
+  aiServiceOnline  = false;
+  aiLoading        = false;
+  aiLoadingBench   = false;
+  benchmarkIA: BenchmarkIA | null = null;
+  previsionRaisonnement = '';
+
   // ── Prévisions ─────────────────────────────────────────────────────────────
   previsionMoisProchain = {
     elec: 0, eau: 0, gazoil: 0, fiabilite: 0,
@@ -186,7 +221,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   previsionRecos: { titre: string; description: string; economie: number; urgence: string }[] = [];
   forecastPoints: ChartPoint[] = [];
 
-  min = Math.min;
+  min  = Math.min;
   Math = Math;
 
   // ── Mesures table ─────────────────────────────────────────────────────────
@@ -195,14 +230,18 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   searchMesure = ''; filterMesureEnergie = '';
 
   constructor(
-    private api:  ApiService,
-    private auth: AuthService,
-    private fb:   FormBuilder,
-    private cdr:  ChangeDetectorRef,
-  ) {}
+    private api:   ApiService,
+    private auth:  AuthService,
+    private fb:    FormBuilder,
+    private cdr:   ChangeDetectorRef,
+    private aiSvc: AiService,
+    private http:  HttpClient,
+  ) {
+    this.initForms();
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ✅ Résolution des IDs par nom
+  // Résolution des IDs par nom
   // ══════════════════════════════════════════════════════════════════════════
 
   private getIdByNom(nom: string): number {
@@ -228,7 +267,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   // ══════════════════════════════════════════════════════════════════════════
 
   ngOnInit(): void {
-    this.initForms();
+
     this.loadAll();
     this.clockInterval = setInterval(() => { this.currentTime = new Date(); }, 1000);
     this.messages = [{
@@ -236,6 +275,9 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       content: 'Bonjour ! Je suis l\'assistant IA de Wicmic Energy. Posez-moi vos questions sur vos consommations, alertes ou équipements.',
       time:    new Date(),
     }];
+    this.aiSvc.checkHealth().subscribe(res => {
+      this.aiServiceOnline = res?.status === 'ok';
+    });
   }
 
   ngOnDestroy(): void { clearInterval(this.clockInterval); }
@@ -249,22 +291,16 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   get currentYear(): number  { return new Date().getFullYear(); }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ✅ Filtre global par date
+  // Filtre global par date
   // ══════════════════════════════════════════════════════════════════════════
 
-  onDateFilterChange(): void {
-    this.dateQuickPeriod = '';
-  }
+  onDateFilterChange(): void { this.dateQuickPeriod = ''; }
 
   setDateQuick(period: string): void {
     this.dateQuickPeriod = period;
     const today = new Date();
     const toStr = today.toISOString().slice(0, 10);
-    if (period === 'all') {
-      this.dateFilterFrom = '';
-      this.dateFilterTo   = '';
-      return;
-    }
+    if (period === 'all') { this.dateFilterFrom = ''; this.dateFilterTo = ''; return; }
     this.dateFilterTo = toStr;
     if (period === '7j') {
       const from = new Date(today); from.setDate(from.getDate() - 7);
@@ -281,12 +317,9 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   }
 
   resetDateFilter(): void {
-    this.dateFilterFrom  = '';
-    this.dateFilterTo    = '';
-    this.dateQuickPeriod = '';
+    this.dateFilterFrom = ''; this.dateFilterTo = ''; this.dateQuickPeriod = '';
   }
 
-  /** Mesures filtrées par la plage de dates globale */
   get mesuresFiltreesParDate(): Mesure[] {
     return this.mesures.filter(m => {
       const d = new Date(m.dateMesure);
@@ -296,7 +329,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Alertes filtrées par la plage de dates globale */
   get alertesFiltreesParDate(): AlerteExt[] {
     return this.alertes.filter(a => {
       const d = new Date(a.dateCreation);
@@ -306,7 +338,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Label lisible de la plage sélectionnée */
   get dateRangeLabel(): string {
     if (!this.dateFilterFrom && !this.dateFilterTo) return 'Toutes les données';
     const fmt = (s: string) => new Date(s).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -315,14 +346,12 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     return `Jusqu'au ${fmt(this.dateFilterTo)}`;
   }
 
-  /** Coût total sur la période filtrée */
   get coutPeriodeFiltree(): number {
     return +(this.mesuresFiltreesParDate
       .reduce((s, m) => s + m.valeur * this.getTarifById(Number(m.energieId)), 0)
     ).toFixed(2);
   }
 
-  /** Statistiques sur la période filtrée */
   get moyenneMesuresFiltrees(): number {
     const mf = this.mesuresFiltreesParDate;
     if (!mf.length) return 0;
@@ -339,7 +368,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     return mf.length ? +Math.min(...mf.map(m => m.valeur)).toFixed(1) : 0;
   }
 
-  /** Total pour une énergie sur la période filtrée */
   getEnergieTotalFiltre(energieId: number): number {
     return +(this.mesuresFiltreesParDate
       .filter(m => Number(m.energieId) === Number(energieId))
@@ -347,35 +375,52 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     ).toFixed(1);
   }
 
-  /** % pour une énergie sur la période filtrée */
   getEnergiePctFiltre(energieId: number): number {
     const total = this.mesuresFiltreesParDate.reduce((s, m) => s + m.valeur, 0) || 1;
     return Math.round((this.getEnergieTotalFiltre(energieId) / total) * 100);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ✅ Exports Excel (XLSX via SheetJS-style CSV avec extension .xlsx)
-  //    ou export CSV simple renommé .xlsx selon l'environnement.
-  //    Pour un vrai XLSX, remplacer par la lib xlsx/exceljs.
+  // Exports Excel
   // ══════════════════════════════════════════════════════════════════════════
 
-  /** Export rapport principal (mesures filtrées) */
+  private exportXlsx(
+    sheets: { name: string; rows: (string | number | null | undefined | boolean)[][] }[],
+    filename: string
+  ): void {
+    const wb = XLSX.utils.book_new();
+    for (const sheet of sheets) {
+      const ws = XLSX.utils.aoa_to_sheet(sheet.rows);
+      const colWidths: number[] = [];
+      sheet.rows.forEach(row => {
+        row.forEach((cell, i) => {
+          const len = cell != null ? String(cell).length : 0;
+          colWidths[i] = Math.max(colWidths[i] ?? 10, len + 2);
+        });
+      });
+      ws['!cols'] = colWidths.map(w => ({ wch: Math.min(w, 60) }));
+      XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
+    }
+    XLSX.writeFile(wb, filename);
+  }
+
   exportRapportExcel(): void {
-    const headers = ['ID','Date','Valeur','Unité','Énergie','Équipement','Source','Commentaire','Coût (DT)'];
-    const rows = this.mesuresFiltreesParDate.map(m => [
-      m.idMesure,
-      new Date(m.dateMesure).toLocaleString('fr-FR'),
-      m.valeur,
-      this.getEnergieUnite(Number(m.energieId)),
-      this.getEnergieNom(Number(m.energieId)),
-      m.equipement?.nom || '—',
-      m.sourceDonnee,
-      m.commentaire || '',
-      (m.valeur * this.getTarifById(Number(m.energieId))).toFixed(2),
-    ]);
-    const summary = [
-      [],
-      ['RÉSUMÉ'],
+    const mesuresRows: (string | number | null)[][] = [
+      ['ID', 'Date', 'Valeur', 'Unité', 'Énergie', 'Équipement', 'Source', 'Commentaire', 'Coût (DT)'],
+      ...this.mesuresFiltreesParDate.map(m => [
+        m.idMesure,
+        new Date(m.dateMesure).toLocaleString('fr-FR'),
+        m.valeur,
+        this.getEnergieUnite(Number(m.energieId)),
+        this.getEnergieNom(Number(m.energieId)),
+        m.equipement?.nom ?? '—',
+        m.sourceDonnee,
+        m.commentaire ?? '',
+        +(m.valeur * this.getTarifById(Number(m.energieId))).toFixed(2),
+      ]),
+    ];
+    const resumeRows: (string | number | null)[][] = [
+      ['Résumé', ''],
       ['Période', this.dateRangeLabel],
       ['Nombre de mesures', this.mesuresFiltreesParDate.length],
       ['Coût total (DT)', this.coutPeriodeFiltree],
@@ -383,101 +428,101 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       ['Maximum', this.maxMesureFiltre],
       ['Minimum', this.minMesureFiltre],
       ['Score efficacité', `${this.efficiencyScore}/100 (${this.efficiencyGrade})`],
+      ['Généré le', new Date().toLocaleString('fr-FR')],
     ];
-    const csv = [[...headers], ...rows, ...summary].map(r => r.join(';')).join('\n');
-    this.download('\uFEFF' + csv, `rapport_mesures_wicmic_${new Date().toISOString().slice(0,10)}.xlsx`, 'text/csv');
+    this.exportXlsx(
+      [{ name: 'Mesures', rows: mesuresRows }, { name: 'Résumé', rows: resumeRows }],
+      `rapport_mesures_wicmic_${new Date().toISOString().slice(0, 10)}.xlsx`
+    );
     this.showToast('Export Excel rapport téléchargé.', 'success');
   }
 
-  /** Export brut des mesures filtrées */
   exportMesuresExcel(): void {
-    const headers = ['ID','Date','Valeur','Unité','Énergie','Équipement','Source','Commentaire'];
-    const rows = this.mesuresFiltreesParDate.map(m => [
-      m.idMesure,
-      new Date(m.dateMesure).toLocaleString('fr-FR'),
-      m.valeur,
-      this.getEnergieUnite(Number(m.energieId)),
-      this.getEnergieNom(Number(m.energieId)),
-      m.equipement?.nom || '—',
-      m.sourceDonnee,
-      m.commentaire || '',
-    ]);
-    const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
-    this.download('\uFEFF' + csv, `mesures_brut_wicmic_${new Date().toISOString().slice(0,10)}.xlsx`, 'text/csv');
+    const rows: (string | number | null)[][] = [
+      ['ID', 'Date', 'Valeur', 'Unité', 'Énergie', 'Équipement', 'Source', 'Commentaire'],
+      ...this.mesuresFiltreesParDate.map(m => [
+        m.idMesure,
+        new Date(m.dateMesure).toLocaleString('fr-FR'),
+        m.valeur,
+        this.getEnergieUnite(Number(m.energieId)),
+        this.getEnergieNom(Number(m.energieId)),
+        m.equipement?.nom ?? '—',
+        m.sourceDonnee,
+        m.commentaire ?? '',
+      ]),
+    ];
+    this.exportXlsx([{ name: 'Mesures', rows }], `mesures_brut_wicmic_${new Date().toISOString().slice(0, 10)}.xlsx`);
     this.showToast('Export mesures Excel téléchargé.', 'success');
   }
 
-  /** Export équipements */
   exportEquipementsExcel(): void {
-    const headers = ['ID','Nom','Type','Statut','Puissance (kW)','Localisation','Énergie','Date installation','Âge','Nb mesures'];
-    const rows = this.equipements.map(e => [
-      e.idEquipement,
-      e.nom,
-      e.typeEquipement,
-      e.statut || 'Actif',
-      e.puissance || '—',
-      e.localisation || e.zone?.nom || '—',
-      e.energie?.nom || (e.energieId ? this.getEnergieNom(Number(e.energieId)) : '—'),
-      (e.dateMiseEnService || e.dateInstallation)
-        ? new Date((e.dateMiseEnService || e.dateInstallation)!).toLocaleDateString('fr-FR')
-        : '—',
-      this.getEquipAgeAns(e),
-      this.getMesuresForEquip(e),
-    ]);
-    const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
-    this.download('\uFEFF' + csv, `equipements_wicmic_${new Date().toISOString().slice(0,10)}.xlsx`, 'text/csv');
+    const rows: (string | number | null)[][] = [
+      ['ID', 'Nom', 'Type', 'Statut', 'Puissance (kW)', 'Localisation', 'Énergie', 'Date installation', 'Âge', 'Nb mesures'],
+      ...this.equipements.map(e => {
+        const dateRef = e.dateMiseEnService || e.dateInstallation;
+        return [
+          e.idEquipement, e.nom, e.typeEquipement, e.statut ?? 'Actif', e.puissance ?? null,
+          e.localisation ?? e.zone?.nom ?? '—',
+          e.energie?.nom ?? (e.energieId ? this.getEnergieNom(Number(e.energieId)) : '—'),
+          dateRef ? new Date(dateRef).toLocaleDateString('fr-FR') : '—',
+          this.getEquipAgeAns(e), this.getMesuresForEquip(e),
+        ];
+      }),
+    ];
+    this.exportXlsx([{ name: 'Équipements', rows }], `equipements_wicmic_${new Date().toISOString().slice(0, 10)}.xlsx`);
     this.showToast('Export équipements Excel téléchargé.', 'success');
   }
 
-  /** Export alertes filtrées */
   exportAlertesExcel(): void {
-    const headers = ['ID','Type','Sévérité','Message','Seuil','Source','Statut','Date'];
-    const rows = this.alertesFiltreesParDate.map(a => [
-      a.idAlerte,
-      a.type,
-      a.severite,
-      a.message,
-      a.seuil,
-      a.sourceAuto ? 'Auto' : 'Manuel',
-      a.traite ? 'Traitée' : 'Active',
-      new Date(a.dateCreation).toLocaleString('fr-FR'),
-    ]);
-    const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
-    this.download('\uFEFF' + csv, `alertes_wicmic_${new Date().toISOString().slice(0,10)}.xlsx`, 'text/csv');
+    const rows: (string | number | null)[][] = [
+      ['ID', 'Type', 'Sévérité', 'Message', 'Seuil', 'Source', 'Statut', 'Date'],
+      ...this.alertesFiltreesParDate.map(a => [
+        a.idAlerte, a.type, a.severite, a.message, a.seuil,
+        a.sourceAuto ? 'Auto' : 'Manuel',
+        a.traite ? 'Traitée' : 'Active',
+        new Date(a.dateCreation).toLocaleString('fr-FR'),
+      ]),
+    ];
+    this.exportXlsx([{ name: 'Alertes', rows }], `alertes_wicmic_${new Date().toISOString().slice(0, 10)}.xlsx`);
     this.showToast('Export alertes Excel téléchargé.', 'success');
   }
 
-  /** Export benchmark */
   exportBenchmarkExcel(): void {
-    const headers = ['Énergie','Unité','Mois courant','Mois précédent','Variation (%)','Position','Insight'];
-    const rows = this.benchmarkData.map(b => [
-      b.energie, b.unite, b.moisActuel, b.moisPrecedent,
-      b.moisPrecedent > 0 ? b.variation : '—',
-      b.position === 'better' ? 'Baisse' : b.position === 'same' ? 'Stable' : 'Hausse',
-      b.insight,
-    ]);
-    const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
-    this.download('\uFEFF' + csv, `benchmark_wicmic_${new Date().toISOString().slice(0,10)}.xlsx`, 'text/csv');
+    const rows: (string | number | null)[][] = [
+      ['Énergie', 'Unité', 'Mois courant', 'Mois précédent', 'Variation (%)', 'Position', 'Insight'],
+      ...this.benchmarkData.map(b => [
+        b.energie, b.unite, b.moisActuel, b.moisPrecedent,
+        b.moisPrecedent > 0 ? b.variation : null,
+        b.position === 'better' ? 'Baisse' : b.position === 'same' ? 'Stable' : 'Hausse',
+        b.insight,
+      ]),
+    ];
+    this.exportXlsx([{ name: 'Benchmark', rows }], `benchmark_wicmic_${new Date().toISOString().slice(0, 10)}.xlsx`);
     this.showToast('Export benchmark Excel téléchargé.', 'success');
   }
 
-  /** Export prévisions IA */
   exportPrevisionsExcel(): void {
-    const headers = ['Énergie','Valeur prévue','Unité','Tendance','Variation (%)','Fiabilité (%)'];
-    const rows = [
-      [NOM_ELECTRICITE, this.previsionMoisProchain.elec, this.getEnergieUnite(this.idElec),
-       this.previsionMoisProchain.elecTrend, this.previsionMoisProchain.elecVar, this.previsionMoisProchain.fiabilite],
-      [NOM_EAU,         this.previsionMoisProchain.eau,    this.getEnergieUnite(this.idEau),    'flat', '—', this.previsionMoisProchain.fiabilite],
-      [NOM_GAZOIL,      this.previsionMoisProchain.gazoil, this.getEnergieUnite(this.idGazoil), 'flat', '—', this.previsionMoisProchain.fiabilite],
+    const prevRows: (string | number | null)[][] = [
+      ['Énergie', 'Valeur prévue', 'Unité', 'Tendance', 'Variation (%)', 'Fiabilité (%)'],
+      [NOM_ELECTRICITE, this.previsionMoisProchain.elec, this.getEnergieUnite(this.idElec), this.previsionMoisProchain.elecTrend, this.previsionMoisProchain.elecVar, this.previsionMoisProchain.fiabilite],
+      [NOM_EAU,         this.previsionMoisProchain.eau,  this.getEnergieUnite(this.idEau),  'flat', null, this.previsionMoisProchain.fiabilite],
+      [NOM_GAZOIL,      this.previsionMoisProchain.gazoil, this.getEnergieUnite(this.idGazoil), 'flat', null, this.previsionMoisProchain.fiabilite],
     ];
-    const summary: (string|number)[][] = [
-      [],
+    const recosRows: (string | number | null)[][] = [
+      ['Titre', 'Description', 'Économie estimée (DT)', 'Urgence'],
+      ...this.previsionRecos.map(r => [r.titre, r.description, r.economie, r.urgence]),
+    ];
+    const metaRows: (string | number | null)[][] = [
+      ['Métadonnées', ''],
       ['Période de prévision', 'Mois prochain'],
       ['Fiabilité globale (%)', this.previsionMoisProchain.fiabilite],
+      ['Raisonnement IA', this.previsionRaisonnement || '—'],
       ['Généré le', new Date().toLocaleString('fr-FR')],
     ];
-    const csv = [headers, ...rows, ...summary].map(r => r.join(';')).join('\n');
-    this.download('\uFEFF' + csv, `previsions_ia_wicmic_${new Date().toISOString().slice(0,10)}.xlsx`, 'text/csv');
+    this.exportXlsx(
+      [{ name: 'Prévisions', rows: prevRows }, { name: 'Recommandations IA', rows: recosRows }, { name: 'Métadonnées', rows: metaRows }],
+      `previsions_ia_wicmic_${new Date().toISOString().slice(0, 10)}.xlsx`
+    );
     this.showToast('Export prévisions Excel téléchargé.', 'success');
   }
 
@@ -579,10 +624,8 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       dateMesure:   m.dateMesure   ?? m.DateMesure  ?? new Date().toISOString(),
       dateCreation: m.dateCreation ?? m.DateCreation ?? new Date().toISOString(),
       sourceDonnee: m.sourceDonnee ?? m.SourceDonnee ?? '',
-      energieId,
-      energie:      energieRaw ? this.normalizeEnergie(energieRaw) : null,
-      equipementId,
-      equipement:   equipRaw ?? null,
+      energieId, energie: energieRaw ? this.normalizeEnergie(energieRaw) : null,
+      equipementId, equipement: equipRaw ?? null,
       commentaire:  m.commentaire  ?? m.Commentaire  ?? '',
     } as Mesure;
   }
@@ -599,8 +642,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       localisation:      e.localisation     ?? e.Localisation      ?? '',
       dateMiseEnService: e.dateMiseEnService ?? e.DateMiseEnService ?? null,
       dateInstallation:  e.dateInstallation  ?? e.DateInstallation  ?? null,
-      energieId,
-      zoneId:  e.zoneId  ?? e.ZoneId  ?? null,
+      energieId, zoneId: e.zoneId ?? e.ZoneId ?? null,
       energie: energieRaw ? this.normalizeEnergie(energieRaw) : null,
       zone:    e.zone    ?? e.Zone    ?? null,
     } as Equipement;
@@ -628,8 +670,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       dateDetection: a.dateDetection ?? a.DateDetection ?? new Date().toISOString(),
       resolu:        a.resolu        ?? a.Resolu        ?? false,
       type:          a.type          ?? a.Type          ?? 'Anomalie',
-      energieNom,
-      energieId,
+      energieNom, energieId,
     };
   }
 
@@ -638,9 +679,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   // ══════════════════════════════════════════════════════════════════════════
 
   private syncSeuilsActuelles(): void {
-    this.seuilsList = this.seuilsList.map(s => ({
-      ...s, valeurActuelle: this.getEnergieTotal(s.energieId),
-    }));
+    this.seuilsList = this.seuilsList.map(s => ({ ...s, valeurActuelle: this.getEnergieTotal(s.energieId) }));
     this.seuilsHistorique = this.seuilsList.filter(s => s.valeurCible > 0);
   }
 
@@ -648,14 +687,9 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     if (!this.energies.length) return;
     if (this.seuilsList.length === 0) {
       this.seuilsList = this.energies.map((e, i) => ({
-        id:             i + 1,
-        energieId:      Number(e.idEnergie),
-        nom:            e.nom,
-        periode:        'Mensuel',
-        annee:          new Date().getFullYear(),
-        valeurCible:    0,
-        valeurActuelle: this.getEnergieTotal(Number(e.idEnergie)),
-        unite:          e.unite,
+        id: i + 1, energieId: Number(e.idEnergie), nom: e.nom,
+        periode: 'Mensuel', annee: new Date().getFullYear(),
+        valeurCible: 0, valeurActuelle: this.getEnergieTotal(Number(e.idEnergie)), unite: e.unite,
       }));
     } else {
       this.seuilsList = this.seuilsList.map(s => {
@@ -667,8 +701,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   }
 
   openSeuilModal(seuil?: Seuil): void {
-    this.editingSeuil = seuil ?? null;
-    this.seuilSaved   = false;
+    this.editingSeuil = seuil ?? null; this.seuilSaved = false;
     if (seuil) {
       this.seuilForm.patchValue({ energieId: seuil.energieId, periode: seuil.periode, valeurCible: seuil.valeurCible, annee: seuil.annee });
     } else {
@@ -718,7 +751,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     this.seuilSaving = true;
     const v = this.seuilForm.value;
     const energieId = +v.energieId;
-
     if (this.editingSeuil) {
       const idx = this.seuilsList.findIndex(s => s.id === this.editingSeuil!.id);
       if (idx >= 0) {
@@ -729,10 +761,9 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       const existing = this.seuilsList.findIndex(s => s.energieId === energieId);
       const newSeuil: Seuil = { id: existing >= 0 ? this.seuilsList[existing].id : Date.now(), energieId, nom: this.getEnergieNom(energieId), periode: v.periode, annee: +v.annee, valeurCible: +v.valeurCible, valeurActuelle: this.getEnergieTotal(energieId), unite: this.getEnergieUnite(energieId) };
       if (existing >= 0) this.seuilsList[existing] = newSeuil;
-      else               this.seuilsList = [...this.seuilsList, newSeuil];
+      else this.seuilsList = [...this.seuilsList, newSeuil];
     }
     this.seuilsHistorique = this.seuilsList.filter(s => s.valeurCible > 0);
-
     setTimeout(() => {
       this.seuilSaving = false; this.seuilSaved = true; this.editingSeuil = null;
       this.showToast('Seuil enregistré !', 'success');
@@ -741,14 +772,15 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   }
 
   exportSeuilsCSV(): void {
-    const headers = ['Énergie','Période','Année','Seuil cible','Consommation','%','Statut'];
-    const rows = this.seuilsHistorique.map(s => {
-      const pct = this.getSeuilPct(s);
-      return [s.nom, s.periode, s.annee, `${s.valeurCible} ${s.unite}`, `${s.valeurActuelle} ${s.unite}`, `${pct}%`, pct <= 80 ? 'OK' : pct <= 100 ? 'Attention' : 'Dépassé'];
-    });
-    const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
-    this.download('\uFEFF' + csv, `seuils_wicmic_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv');
-    this.showToast('Export seuils CSV téléchargé.', 'success');
+    const rows: (string | number)[][] = [
+      ['Énergie', 'Période', 'Année', 'Seuil cible', 'Unité', 'Consommation actuelle', 'Unité', '%', 'Statut'],
+      ...this.seuilsHistorique.map(s => {
+        const pct = this.getSeuilPct(s);
+        return [s.nom, s.periode, s.annee, s.valeurCible, s.unite, s.valeurActuelle, s.unite, pct, pct <= 80 ? 'OK' : pct <= 100 ? 'Attention' : 'Dépassé'];
+      }),
+    ];
+    this.exportXlsx([{ name: 'Seuils', rows }], `seuils_wicmic_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    this.showToast('Export seuils téléchargé.', 'success');
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -807,21 +839,16 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       const existe = this.alertes.some(a => a.sourceAuto && !a.traite && a.message.includes(s.nom));
       if (existe) return;
       const alerte: AlerteExt = {
-        idAlerte:     Date.now() + Math.random(),
-        type:         'Dépassement seuil',
-        severite:     this.getSeuilPct(s) > 130 ? 'Critique' : 'Haute',
-        message:      `Seuil ${s.nom} dépassé : ${s.valeurActuelle} ${s.unite} / ${s.valeurCible} ${s.unite} (${this.getSeuilPct(s)}%)`,
-        seuil:        s.valeurCible,
-        traite:       false,
-        dateCreation: new Date().toISOString(),
-        sourceAuto:   true,
+        idAlerte: Date.now() + Math.random(), type: 'Dépassement seuil',
+        severite: this.getSeuilPct(s) > 130 ? 'Critique' : 'Haute',
+        message: `Seuil ${s.nom} dépassé : ${s.valeurActuelle} ${s.unite} / ${s.valeurCible} ${s.unite} (${this.getSeuilPct(s)}%)`,
+        seuil: s.valeurCible, traite: false, dateCreation: new Date().toISOString(), sourceAuto: true,
       };
       this.alertes = [alerte, ...this.alertes]; count++;
     });
     this.alertesAutoGenerees = count;
-    if (count > 0) {
-      this.showToast(`${count} alerte(s) automatique(s) générée(s).`, 'warn');
-    } else { this.showToast('Aucun nouveau seuil dépassé.', 'info'); }
+    if (count > 0) this.showToast(`${count} alerte(s) automatique(s) générée(s).`, 'warn');
+    else this.showToast('Aucun nouveau seuil dépassé.', 'info');
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -888,15 +915,15 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   // KPIs
   // ══════════════════════════════════════════════════════════════════════════
 
-  get totalMesures()         { return this.mesures.length; }
-  get alertesNonTraitees()   { return this.alertes.filter(a => !a.traite).length; }
-  get anomaliesNonResolues() { return this.anomalies.filter(a => !a.resolu).length; }
-  get totalRecommandations() { return this.recommandations.length; }
-  get recoAppliquees()       { return this.recommandations.filter(r => r.applique).length; }
-  get recoHautePriorite()    { return this.recommandations.filter(r => r.priorite === 'Haute').length; }
-  get equipementsActifs()    { return this.equipements.filter(e => !e.statut || e.statut === 'Actif').length; }
+  get totalMesures()           { return this.mesures.length; }
+  get alertesNonTraitees()     { return this.alertes.filter(a => !a.traite).length; }
+  get anomaliesNonResolues()   { return this.anomalies.filter(a => !a.resolu).length; }
+  get totalRecommandations()   { return this.recommandations.length; }
+  get recoAppliquees()         { return this.recommandations.filter(r => r.applique).length; }
+  get recoHautePriorite()      { return this.recommandations.filter(r => r.priorite === 'Haute').length; }
+  get equipementsActifs()      { return this.equipements.filter(e => !e.statut || e.statut === 'Actif').length; }
   get equipementsMaintenance() { return this.equipements.filter(e => e.statut === 'Maintenance').length; }
-  get equipementsInactifs()  { return this.equipements.filter(e => e.statut === 'Inactif').length; }
+  get equipementsInactifs()    { return this.equipements.filter(e => e.statut === 'Inactif').length; }
   get puissanceTotale(): number { return this.equipements.reduce((s, e) => s + (e.puissance || 0), 0); }
 
   get derniereMesure(): number {
@@ -957,6 +984,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     const prev = sorted[sorted.length - 2].valeur;
     return last > prev * 1.05 ? 'up' : last < prev * 0.95 ? 'down' : 'stable';
   }
+
   get tendancePct(): string {
     if (this.mesures.length < 2) return '0';
     const sorted = [...this.mesures].sort((a, b) => new Date(a.dateMesure).getTime() - new Date(b.dateMesure).getTime());
@@ -984,8 +1012,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     if (this.tendanceMois === 'up')   score -= 8;
     if (this.tendanceMois === 'down') score += 5;
     if (this.equipementsMaintenance === 0 && this.equipements.length > 0) score += 5;
-    const recoBonus = Math.min(10, this.recoAppliquees * 2);
-    score += recoBonus;
+    score += Math.min(10, this.recoAppliquees * 2);
     return Math.max(0, Math.min(100, Math.round(score)));
   }
   get hasEfficiencyData(): boolean { return this.mesures.length > 0; }
@@ -1003,11 +1030,9 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   getEnergieTotal(energieId: number): number {
     return +(this.mesures.filter(m => Number(m.energieId) === Number(energieId)).reduce((s, m) => s + (m.valeur ?? 0), 0).toFixed(1));
   }
-
   getEnergieCout(energieId: number): number {
     return +(this.getEnergieTotal(energieId) * this.getTarifById(energieId)).toFixed(2);
   }
-
   getEnergiePct(energieId: number): number {
     const total = this.mesures.reduce((s, m) => s + m.valeur, 0) || 1;
     return Math.round((this.getEnergieTotal(energieId) / total) * 100);
@@ -1071,8 +1096,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   getSparkPath(energieId: number): string {
     const spark = this.sparklines.find(s => s.energieId === energieId);
     if (!spark || spark.points.every(p => p === 0)) return '';
-    const pts = spark.points;
-    const maxV = Math.max(...pts, 1);
+    const pts = spark.points; const maxV = Math.max(...pts, 1);
     const W = 80; const H = 28;
     return pts.map((v, i) => {
       const x = (i / (pts.length - 1)) * W;
@@ -1192,8 +1216,8 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       if (avg > 0) jours90.push({ x: 90 - i, y: +avg.toFixed(1) });
     }
     const n = jours90.length; if (n < 5) { this.forecastPoints = []; return; }
-    const sumX = jours90.reduce((s, p) => s + p.x, 0);
-    const sumY = jours90.reduce((s, p) => s + p.y, 0);
+    const sumX  = jours90.reduce((s, p) => s + p.x, 0);
+    const sumY  = jours90.reduce((s, p) => s + p.y, 0);
     const sumXY = jours90.reduce((s, p) => s + p.x * p.y, 0);
     const sumX2 = jours90.reduce((s, p) => s + p.x * p.x, 0);
     const a = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
@@ -1270,72 +1294,47 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   openAddEquipement(): void {
     this.editingEquipement = null;
     this.equipementForm.reset({ statut: 'Actif', dateInstallation: new Date().toISOString().slice(0,10) });
-    this.equipementSaved = false;
-    this.showEquipementModal = true;
+    this.equipementSaved = false; this.showEquipementModal = true;
   }
 
   openEditEquipement(e: Equipement): void {
     this.editingEquipement = e;
     const dateRef = e.dateMiseEnService || e.dateInstallation;
     this.equipementForm.patchValue({
-      nom:              e.nom,
-      typeEquipement:   e.typeEquipement,
-      statut:           e.statut || 'Actif',
-      puissance:        e.puissance ?? '',
-      localisation:     e.localisation || e.zone?.nom || '',
+      nom: e.nom, typeEquipement: e.typeEquipement, statut: e.statut || 'Actif',
+      puissance: e.puissance ?? '', localisation: e.localisation || e.zone?.nom || '',
       dateInstallation: dateRef ? new Date(dateRef).toISOString().slice(0,10) : '',
-      energieId:        e.energieId ?? '',
-      zoneId:           e.zoneId ?? '',
-      description:      (e as {description?: string}).description || '',
+      energieId: e.energieId ?? '', zoneId: e.zoneId ?? '',
+      description: (e as {description?: string}).description || '',
     });
-    this.equipementSaved = false;
-    this.showEquipementModal = true;
+    this.equipementSaved = false; this.showEquipementModal = true;
   }
 
   saveEquipement(): void {
     if (this.equipementForm.invalid) { this.equipementForm.markAllAsTouched(); return; }
     this.equipementSaving = true;
     const v = this.equipementForm.value;
-
     const dto = {
-      idEquipement:      this.editingEquipement?.idEquipement ?? 0,
-      nom:               v.nom,
-      typeEquipement:    v.typeEquipement,
-      statut:            v.statut,
-      puissance:         v.puissance ? +v.puissance : null,
-      localisation:      v.localisation,
+      idEquipement: this.editingEquipement?.idEquipement ?? 0,
+      nom: v.nom, typeEquipement: v.typeEquipement, statut: v.statut,
+      puissance: v.puissance ? +v.puissance : null, localisation: v.localisation,
       dateMiseEnService: v.dateInstallation ? new Date(v.dateInstallation).toISOString() : null,
       dateInstallation:  v.dateInstallation ? new Date(v.dateInstallation).toISOString() : null,
-      energieId:         v.energieId  ? +v.energieId  : null,
-      zoneId:            v.zoneId     ? +v.zoneId     : null,
-      description:       v.description ?? '',
-      zone:              null,
-      energie:           null,
-      mesures:           [],
-      alertes:           [],
+      energieId: v.energieId ? +v.energieId : null, zoneId: v.zoneId ? +v.zoneId : null,
+      description: v.description ?? '', zone: null, energie: null, mesures: [], alertes: [],
     };
-
     const obs$ = this.editingEquipement
       ? this.api.updateEquipement(this.editingEquipement.idEquipement, dto)
       : this.api.createEquipement(dto);
-
     obs$.subscribe({
       next: () => {
-        this.equipementSaving = false;
-        this.equipementSaved  = true;
+        this.equipementSaving = false; this.equipementSaved = true;
         this.showToast(this.editingEquipement ? 'Équipement modifié !' : 'Équipement ajouté !', 'success');
-        setTimeout(() => {
-          this.equipementSaved     = false;
-          this.showEquipementModal = false;
-          this.editingEquipement   = null;
-          this.loadAll();
-        }, 1400);
+        setTimeout(() => { this.equipementSaved = false; this.showEquipementModal = false; this.editingEquipement = null; this.loadAll(); }, 1400);
       },
       error: (err) => {
         this.equipementSaving = false;
-        const detail = err?.error?.message ?? err?.message ?? '';
-        this.showToast(detail || 'Erreur lors de la sauvegarde.', 'error');
-        console.error('[saveEquipement]', err);
+        this.showToast(err?.error?.message ?? err?.message ?? 'Erreur lors de la sauvegarde.', 'error');
       },
     });
   }
@@ -1363,9 +1362,9 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   // Alertes
   // ══════════════════════════════════════════════════════════════════════════
 
-  get alertTypes():    string[] { return [...new Set(this.alertes.map(a => a.type))]; }
-  get alertesCritiques(): number { return this.alertes.filter(a => !a.traite && a.severite === 'Critique').length; }
-  get alertesHautes():    number { return this.alertes.filter(a => !a.traite && a.severite === 'Haute').length; }
+  get alertTypes():       string[] { return [...new Set(this.alertes.map(a => a.type))]; }
+  get alertesCritiques(): number   { return this.alertes.filter(a => !a.traite && a.severite === 'Critique').length; }
+  get alertesHautes():    number   { return this.alertes.filter(a => !a.traite && a.severite === 'Haute').length; }
 
   get filteredAlertes(): AlerteExt[] {
     let list = [...this.alertesFiltreesParDate];
@@ -1442,44 +1441,93 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
 
   telechargerRapport(type: string): void {
     switch (type) {
-      case 'mensuel':     this.exportRapportExcel(); break;
+      case 'mensuel':     this.exportRapportExcel();      break;
       case 'trimestriel': this.exportRapportTrimestriel(); break;
-      case 'seuils':      this.exportRapportSeuils(); break;
-      case 'alertes':     this.exportAlertesExcel(); break;
-      case 'anomalies':   this.exportRapportAnomalies(); break;
-      case 'csv':         this.exportCSV(); break;
+      case 'seuils':      this.exportRapportSeuils();      break;
+      case 'alertes':     this.exportAlertesExcel();       break;
+      case 'anomalies':   this.exportRapportAnomalies();   break;
+      case 'csv':         this.exportCSV();                break;
     }
   }
 
   get trimestre(): number { return Math.ceil((new Date().getMonth() + 1) / 3); }
 
   private exportRapportTrimestriel(): void {
-    const lines = [`RAPPORT TRIMESTRIEL — T${this.trimestre} ${new Date().getFullYear()}`, '═'.repeat(60), `Généré le : ${new Date().toLocaleString('fr-FR')}`, `${this.totalMesures} mesures`, '─'.repeat(60), `Alertes : ${this.alertes.length}`, `Anomalies : ${this.anomalies.length}`, `Coût estimé : ${this.coutTotal} DT`];
-    this.download(lines.join('\n'), `rapport_trim_T${this.trimestre}.txt`, 'text/plain');
+    const rows: (string | number)[][] = [
+      [`RAPPORT TRIMESTRIEL — T${this.trimestre} ${new Date().getFullYear()}`, ''],
+      ['Généré le', new Date().toLocaleString('fr-FR')],
+      ['Nombre de mesures', this.totalMesures],
+      ['Alertes', this.alertes.length],
+      ['Anomalies', this.anomalies.length],
+      ['Coût estimé (DT)', this.coutTotal],
+    ];
+    this.exportXlsx([{ name: `Rapport T${this.trimestre}`, rows }], `rapport_trim_T${this.trimestre}_${new Date().getFullYear()}.xlsx`);
     this.showToast('Rapport trimestriel téléchargé.', 'success');
   }
+
   private exportRapportSeuils(): void {
-    const lines = ['RAPPORT SEUILS', '═'.repeat(60), `Taux de respect : ${this.tauxSeuil}%`, '─'.repeat(60), ...this.seuilsList.map(s => `${s.nom.padEnd(20)}: ${s.valeurActuelle}/${s.valeurCible} ${s.unite} — ${this.getSeuilPct(s)}%`)];
-    this.download(lines.join('\n'), `rapport_seuils.txt`, 'text/plain');
+    const rows: (string | number)[][] = [
+      ['RAPPORT SEUILS', ''],
+      ['Taux de respect (%)', this.tauxSeuil],
+      [],
+      ['Énergie', 'Consommation', 'Seuil cible', 'Unité', '%', 'Statut'],
+      ...this.seuilsList.map(s => {
+        const pct = this.getSeuilPct(s);
+        return [s.nom, s.valeurActuelle, s.valeurCible, s.unite, pct, pct <= 80 ? 'OK' : pct <= 100 ? 'Proche' : 'Dépassé'];
+      }),
+    ];
+    this.exportXlsx([{ name: 'Seuils', rows }], `rapport_seuils_${new Date().toISOString().slice(0, 10)}.xlsx`);
     this.showToast('Rapport seuils téléchargé.', 'success');
   }
+
   private exportRapportAnomalies(): void {
-    const headers = ['ID','Type','Description','Date','Énergie','Statut','Progression'];
-    const rows = this.anomalies.map(a => [a.id, a.type||'Anomalie', a.description, new Date(a.dateDetection).toLocaleDateString('fr-FR'), a.energieNom||'—', a.resolu?'Résolue':'En cours', `${this.getProgress(a)}%`]);
-    this.download('\uFEFF' + [headers,...rows].map(r => r.join(';')).join('\n'), `rapport_anomalies.csv`, 'text/csv');
+    const rows: (string | number)[][] = [
+      ['ID', 'Type', 'Description', 'Date', 'Énergie', 'Statut', 'Progression (%)'],
+      ...this.anomalies.map(a => [
+        a.id, a.type ?? 'Anomalie', a.description,
+        new Date(a.dateDetection).toLocaleDateString('fr-FR'),
+        a.energieNom ?? '—', a.resolu ? 'Résolue' : 'En cours', this.getProgress(a),
+      ]),
+    ];
+    this.exportXlsx([{ name: 'Anomalies', rows }], `rapport_anomalies_${new Date().toISOString().slice(0, 10)}.xlsx`);
     this.showToast('Rapport anomalies téléchargé.', 'success');
   }
 
   exportCSV(): void {
-    const headers = ['ID','Valeur','Unité','Source','Énergie','Équipement','Date mesure','Statut'];
-    const rows = this.mesures.map(m => [m.idMesure, m.valeur, this.getEnergieUnite(m.energieId), m.sourceDonnee, this.getEnergieNom(m.energieId), m.equipement?.nom||'—', new Date(m.dateMesure).toLocaleString('fr-FR'), this.isAboveThreshold(m.valeur)?'Dépassement':'Normal']);
-    this.download('\uFEFF' + [headers,...rows].map(r => r.join(';')).join('\n'), `mesures_wicmic_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv');
+    const headers = ['ID', 'Valeur', 'Unité', 'Source', 'Énergie', 'Équipement', 'Date mesure', 'Statut'];
+    const rows = this.mesures.map(m => [
+      m.idMesure, m.valeur, this.getEnergieUnite(m.energieId), m.sourceDonnee,
+      this.getEnergieNom(m.energieId), m.equipement?.nom || '—',
+      new Date(m.dateMesure).toLocaleString('fr-FR'),
+      this.isAboveThreshold(m.valeur) ? 'Dépassement' : 'Normal',
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
+    this.download('\uFEFF' + csv, `mesures_wicmic_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv');
     this.showToast('Export CSV téléchargé.', 'success');
   }
 
   exportRapport(): void {
     const sep = '═'.repeat(60); const sub = '─'.repeat(60);
-    const lines = ['WICMIC ENERGY — Rapport de consommation', sep, `Généré le : ${new Date().toLocaleString('fr-FR')}`, `Utilisateur : ${this.currentUser?.nom??'—'}`, `Période : ${this.dateRangeLabel}`, sub, `Total mesures : ${this.mesuresFiltreesParDate.length}`, `Moyenne : ${this.moyenneMesuresFiltrees}`, `Max : ${this.maxMesureFiltre}`, `Min : ${this.minMesureFiltre}`, `Coût période : ${this.coutPeriodeFiltree} DT`, `Coût ce mois : ${this.coutMoisCourant} DT`, `Coût total : ${this.coutTotal} DT`, `Tendance : ${this.tendance} (${this.tendancePct}%)`, sub, `Alertes actives : ${this.alertesNonTraitees} (${this.alertesCritiques} critiques)`, `Anomalies : ${this.anomaliesNonResolues} non résolues / ${this.anomalies.length}`, `Recommandations : ${this.recoAppliquees}/${this.totalRecommandations} appliquées`, sub, '── ÉNERGIES ──', ...this.energies.map(en => `${en.nom.padEnd(20)}: ${this.getEnergieTotal(en.idEnergie)} ${en.unite} — ${this.getEnergieCout(en.idEnergie)} DT (${this.getEnergiePct(en.idEnergie)}%)`), sub];
+    const lines = [
+      'WICMIC ENERGY — Rapport de consommation', sep,
+      `Généré le : ${new Date().toLocaleString('fr-FR')}`,
+      `Utilisateur : ${this.currentUser?.nom ?? '—'}`,
+      `Période : ${this.dateRangeLabel}`, sub,
+      `Total mesures : ${this.mesuresFiltreesParDate.length}`,
+      `Moyenne : ${this.moyenneMesuresFiltrees}`,
+      `Max : ${this.maxMesureFiltre}`,
+      `Min : ${this.minMesureFiltre}`,
+      `Coût période : ${this.coutPeriodeFiltree} DT`,
+      `Coût ce mois : ${this.coutMoisCourant} DT`,
+      `Coût total : ${this.coutTotal} DT`,
+      `Tendance : ${this.tendance} (${this.tendancePct}%)`, sub,
+      `Alertes actives : ${this.alertesNonTraitees} (${this.alertesCritiques} critiques)`,
+      `Anomalies : ${this.anomaliesNonResolues} non résolues / ${this.anomalies.length}`,
+      `Recommandations : ${this.recoAppliquees}/${this.totalRecommandations} appliquées`, sub,
+      '── ÉNERGIES ──',
+      ...this.energies.map(en => `${en.nom.padEnd(20)}: ${this.getEnergieTotal(en.idEnergie)} ${en.unite} — ${this.getEnergieCout(en.idEnergie)} DT (${this.getEnergiePct(en.idEnergie)}%)`),
+      sub,
+    ];
     this.download(lines.join('\n'), `rapport_wicmic_${new Date().toISOString().slice(0,10)}.txt`, 'text/plain');
     this.showToast('Rapport exporté.', 'success');
   }
@@ -1487,7 +1535,31 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   exportRapportPDF(): void {
     const sep = '═'.repeat(72); const sub = '─'.repeat(72);
     const date = new Date().toLocaleString('fr-FR');
-    const lines = ['╔'+'═'.repeat(70)+'╗', '║'+'         WICMIC ENERGY — RAPPORT EXÉCUTIF COMPLET'.padEnd(70)+'║', '║'+`         Généré le : ${date}`.padEnd(70)+'║', '║'+`         ${this.totalMesures} mesures · Score efficacité : ${this.efficiencyScore}/100 (${this.efficiencyGrade})`.padEnd(70)+'║', '╚'+'═'.repeat(70)+'╝', '', sep, '  SECTION 1 — TABLEAU DE BORD', sub, `  Score efficacité : ${this.efficiencyScore}/100 (${this.efficiencyGrade})`, `  Coût ce mois : ${this.coutMoisCourant} DT`, `  Coût total : ${this.coutTotal} DT`, `  Tendance : ${this.tendance === 'up' ? '↑ HAUSSE' : this.tendance === 'down' ? '↓ BAISSE' : '→ STABLE'} (${this.tendancePct}%)`, '', sep, '  SECTION 2 — CONSOMMATIONS PAR VECTEUR', sub, ...this.energies.map(en => `  ${en.nom.padEnd(20)}: ${this.getEnergieTotal(en.idEnergie).toString().padStart(8)} ${en.unite.padEnd(6)} | ${this.getEnergieCout(en.idEnergie)} DT | ${this.getEnergiePct(en.idEnergie)}%`), '', sep, '  SECTION 3 — SEUILS', sub, `  Taux de respect : ${this.seuilsDefinis > 0 ? this.tauxSeuil+'%' : 'Aucun seuil défini'}`, ...this.seuilsList.map(s => s.valeurCible === 0 ? `  ${s.nom.padEnd(20)}: Non défini` : `  ${s.nom.padEnd(20)}: ${s.valeurActuelle}/${s.valeurCible} ${s.unite} | ${this.getSeuilPct(s)}% | ${this.getSeuilPct(s) <= 80 ? '✓ OK' : this.getSeuilPct(s) <= 100 ? '⚠ Proche' : '✕ DÉPASSÉ'}`), '', sep, '  SECTION 4 — ALERTES & ANOMALIES', sub, `  Alertes actives : ${this.alertesNonTraitees} (${this.alertesCritiques} critique(s))`, `  Anomalies en cours : ${this.anomaliesNonResolues}/${this.anomalies.length}`, `  Recommandations appliquées : ${this.recoAppliquees}/${this.totalRecommandations}`, '', sep, `  Utilisateur : ${this.currentUser?.nom??'—'}`, sep];
+    const lines = [
+      '╔' + '═'.repeat(70) + '╗',
+      '║' + '         WICMIC ENERGY — RAPPORT EXÉCUTIF COMPLET'.padEnd(70) + '║',
+      '║' + `         Généré le : ${date}`.padEnd(70) + '║',
+      '║' + `         ${this.totalMesures} mesures · Score efficacité : ${this.efficiencyScore}/100 (${this.efficiencyGrade})`.padEnd(70) + '║',
+      '╚' + '═'.repeat(70) + '╝', '',
+      sep, '  SECTION 1 — TABLEAU DE BORD', sub,
+      `  Score efficacité : ${this.efficiencyScore}/100 (${this.efficiencyGrade})`,
+      `  Coût ce mois : ${this.coutMoisCourant} DT`,
+      `  Coût total : ${this.coutTotal} DT`,
+      `  Tendance : ${this.tendance === 'up' ? '↑ HAUSSE' : this.tendance === 'down' ? '↓ BAISSE' : '→ STABLE'} (${this.tendancePct}%)`, '',
+      sep, '  SECTION 2 — CONSOMMATIONS PAR VECTEUR', sub,
+      ...this.energies.map(en => `  ${en.nom.padEnd(20)}: ${this.getEnergieTotal(en.idEnergie).toString().padStart(8)} ${en.unite.padEnd(6)} | ${this.getEnergieCout(en.idEnergie)} DT | ${this.getEnergiePct(en.idEnergie)}%`), '',
+      sep, '  SECTION 3 — SEUILS', sub,
+      `  Taux de respect : ${this.seuilsDefinis > 0 ? this.tauxSeuil + '%' : 'Aucun seuil défini'}`,
+      ...this.seuilsList.map(s => s.valeurCible === 0
+        ? `  ${s.nom.padEnd(20)}: Non défini`
+        : `  ${s.nom.padEnd(20)}: ${s.valeurActuelle}/${s.valeurCible} ${s.unite} | ${this.getSeuilPct(s)}% | ${this.getSeuilPct(s) <= 80 ? '✓ OK' : this.getSeuilPct(s) <= 100 ? '⚠ Proche' : '✕ DÉPASSÉ'}`
+      ), '',
+      sep, '  SECTION 4 — ALERTES & ANOMALIES', sub,
+      `  Alertes actives : ${this.alertesNonTraitees} (${this.alertesCritiques} critique(s))`,
+      `  Anomalies en cours : ${this.anomaliesNonResolues}/${this.anomalies.length}`,
+      `  Recommandations appliquées : ${this.recoAppliquees}/${this.totalRecommandations}`, '',
+      sep, `  Utilisateur : ${this.currentUser?.nom ?? '—'}`, sep,
+    ];
     this.download(lines.join('\n'), `rapport_executif_wicmic_${new Date().toISOString().slice(0,10)}.txt`, 'text/plain');
     this.showToast('Rapport exporté avec succès !', 'success');
   }
@@ -1500,20 +1572,56 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Chat IA
+  // Chat IA  ← MODIFIÉ : détection sociale + contexte conditionnel
   // ══════════════════════════════════════════════════════════════════════════
 
   sendChat(): void {
     const msg = this.chatInput.trim();
     if (!msg || this.chatLoading) return;
+
     this.messages.push({ role: 'user', content: msg, time: new Date() });
     this.chatInput = ''; this.chatLoading = true; this._scrollChat();
-    const ctx = [`Contexte WICMIC Energy :`, `- Mesures : ${this.totalMesures} | Moy : ${this.moyenneMesures} | Max : ${this.maxMesure}`, `- Coût mois : ${this.coutMoisCourant} DT | Total : ${this.coutTotal} DT`, `- Alertes actives : ${this.alertesNonTraitees} (${this.alertesCritiques} critiques)`, `- Anomalies : ${this.anomaliesNonResolues}/${this.anomalies.length}`, `- Équipements : ${this.equipementsActifs} actifs / ${this.equipements.length}`, `- Score efficacité : ${this.efficiencyScore}/100 (${this.efficiencyGrade})`, `- Tendance : ${this.tendance} (${this.tendancePct}%)`, `- Période filtrée : ${this.dateRangeLabel}`, `Question : ${msg}`].join('\n');
-    this.api.ollamaChat(ctx).subscribe({
-      next:  res => { this.messages.push({ role: 'assistant', content: res.response, time: new Date() }); this.chatLoading = false; this._scrollChat(); },
-      error: ()  => { this.messages.push({ role: 'assistant', content: 'Service IA indisponible. Assurez-vous qu\'Ollama est démarré.', time: new Date() }); this.chatLoading = false; this._scrollChat(); },
+
+    // ── Contexte dashboard (injecté uniquement pour les questions métier) ──
+    const dashboardCtx = [
+      'Contexte WICMIC Energy :',
+      `- Mesures : ${this.totalMesures} | Moy : ${this.moyenneMesures} | Max : ${this.maxMesure}`,
+      `- Coût mois : ${this.coutMoisCourant} DT | Total : ${this.coutTotal} DT`,
+      `- Alertes actives : ${this.alertesNonTraitees} (${this.alertesCritiques} critiques)`,
+      `- Anomalies : ${this.anomaliesNonResolues}/${this.anomalies.length}`,
+      `- Équipements : ${this.equipementsActifs} actifs / ${this.equipements.length}`,
+      `- Score efficacité : ${this.efficiencyScore}/100 (${this.efficiencyGrade})`,
+      `- Tendance : ${this.tendance} (${this.tendancePct}%)`,
+      `- Raisonnement IA prévisions : ${this.previsionRaisonnement || 'N/A'}`,
+      `- Résumé benchmark IA : ${this.benchmarkIA?.resumeGlobal || 'N/A'}`,
+    ].join('\n');
+
+    // ── Message social → contexte vide, réponse immédiate côté Python ──────
+    const social = isSocialMessage(msg);
+
+    const payload = {
+      prompt:  msg,
+      context: social ? '' : dashboardCtx,
+    };
+
+    this.http.post<{ response: string }>(`${this.RAG_URL}/chat`, payload).pipe(
+      timeout(300000),
+      catchError(() =>
+        // Fallback .NET sans contexte pour les messages sociaux
+        this.api.ollamaChat(social ? msg : dashboardCtx + `\n\nQuestion : ${msg}`)
+      )
+    ).subscribe({
+      next:  res => {
+        this.messages.push({ role: 'assistant', content: res.response, time: new Date() });
+        this.chatLoading = false; this._scrollChat();
+      },
+      error: () => {
+        this.messages.push({ role: 'assistant', content: 'Service IA indisponible.', time: new Date() });
+        this.chatLoading = false; this._scrollChat();
+      },
     });
   }
+
   sendSuggestion(text: string): void { this.chatInput = text; this.sendChat(); }
   onChatEnter(event: Event): void { const ke = event as KeyboardEvent; if (!ke.shiftKey) { event.preventDefault(); this.sendChat(); } }
   private _scrollChat(): void { setTimeout(() => { if (this.chatScrollRef?.nativeElement) this.chatScrollRef.nativeElement.scrollTop = this.chatScrollRef.nativeElement.scrollHeight; }, 50); }
@@ -1536,172 +1644,164 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     const moisLabels = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
     const monthlyTotals: { label: string; total: number }[] = [];
     for (let i = 11; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const d   = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const fin = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-      const t = this.mesures.filter(m => { const dm = new Date(m.dateMesure); return dm >= d && dm <= fin; }).reduce((s, m) => s + m.valeur, 0);
+      const t   = this.mesures.filter(m => { const dm = new Date(m.dateMesure); return dm >= d && dm <= fin; }).reduce((s, m) => s + m.valeur, 0);
       monthlyTotals.push({ label: moisLabels[d.getMonth()], total: +t.toFixed(1) });
     }
     const nonZero = monthlyTotals.filter(m => m.total > 0);
     const maxM = nonZero.length ? Math.max(...nonZero.map(m => m.total)) : 0;
     const minM = nonZero.length ? Math.min(...nonZero.map(m => m.total)) : 0;
-
-    this.benchmarkData = this.energies.map(en => {
-      const mesuresEn = this.mesures.filter(m => Number(m.energieId) === Number(en.idEnergie));
-      const getM = (offset: number): number => {
-        const d = new Date(now.getFullYear(), now.getMonth() - offset, 1);
-        const fin = new Date(now.getFullYear(), now.getMonth() - offset + 1, 0);
-        return mesuresEn.filter(m => { const dm = new Date(m.dateMesure); return dm >= d && dm <= fin; }).reduce((s, m) => s + m.valeur, 0);
-      };
-      const allVals: number[] = [];
-      for (let i = 11; i >= 0; i--) { const v = getM(i); if (v > 0) allVals.push(v); }
-      const moisActuel = +getM(0).toFixed(1); const moisPrecedent = +getM(1).toFixed(1);
-      const moyenne = allVals.length ? +(allVals.reduce((a, b) => a + b, 0) / allVals.length).toFixed(1) : 0;
-      const hasData = moisActuel > 0 || moisPrecedent > 0;
-      let variation = 0; let position: 'better'|'same'|'worse' = 'same'; let insight = '';
-      if (!hasData) { insight = `Aucune donnée pour ${en.nom}.`; }
-      else if (moisPrecedent === 0 && moisActuel > 0) { insight = `Premières données ${en.nom} : ${moisActuel} ${en.unite}.`; }
-      else if (moisActuel > 0 && moisPrecedent > 0) {
-        variation = +((moisActuel - moisPrecedent) / moisPrecedent * 100).toFixed(1);
-        if (variation < -3) { position = 'better'; insight = `✓ ${en.nom} en baisse de ${Math.abs(variation)}% vs mois dernier.`; }
-        else if (variation > 3) { position = 'worse'; insight = `⚠ ${en.nom} en hausse de ${variation}% vs mois dernier.`; }
-        else { insight = `${en.nom} stable (${moisActuel} vs ${moisPrecedent} ${en.unite}).`; }
-      } else { insight = `Données partielles pour ${en.nom}.`; }
-      return { energie: `${this.getEnergieIcon(Number(en.idEnergie))} ${en.nom}`, unite: en.unite, moisActuel, moisPrecedent, moyenne, variation, position, insight, hasData };
-    });
-
-    if (!this.benchmarkData.length) {
-      this.benchmarkData = [{ energie: '— Aucune énergie', unite: '', moisActuel: 0, moisPrecedent: 0, moyenne: 0, variation: 0, position: 'same', insight: 'Aucune énergie configurée.', hasData: false }];
-    }
     this.rankTimeline = monthlyTotals.map(m => {
       if (m.total === 0) return { label: m.label, pct: 0 };
       let pct = 50;
       if (maxM > minM) { pct = Math.round(100 - ((m.total - minM) / (maxM - minM)) * 100); pct = Math.max(5, Math.min(95, pct)); }
       return { label: m.label, pct };
     });
+
+    const getMonthTotal = (eid: number, offset: number): number => {
+      const d   = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      const fin = new Date(now.getFullYear(), now.getMonth() - offset + 1, 0);
+      return +this.mesures
+        .filter(m => Number(m.energieId) === Number(eid))
+        .filter(m => { const dm = new Date(m.dateMesure); return dm >= d && dm <= fin; })
+        .reduce((s, m) => s + m.valeur, 0).toFixed(1);
+    };
+
+    const getMoyenne = (eid: number): number => {
+      const vals: number[] = [];
+      for (let i = 11; i >= 0; i--) { const v = getMonthTotal(eid, i); if (v > 0) vals.push(v); }
+      return vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : 0;
+    };
+
+    const energiesPayload = this.energies.map(en => ({
+      nom:           en.nom,
+      unite:         en.unite,
+      moisActuel:    getMonthTotal(Number(en.idEnergie), 0),
+      moisPrecedent: getMonthTotal(Number(en.idEnergie), 1),
+      moyenne:       getMoyenne(Number(en.idEnergie)),
+    })).filter(e => e.moisActuel > 0 || e.moisPrecedent > 0);
+
+    if (!energiesPayload.length) {
+      this.benchmarkData = [{ energie: '— Aucune donnée', unite: '', moisActuel: 0, moisPrecedent: 0, moyenne: 0, variation: 0, position: 'same', insight: 'Aucune donnée ce mois.', hasData: false }];
+      return;
+    }
+
+    this.benchmarkData = energiesPayload.map(e => {
+      const variation = e.moisPrecedent > 0 ? +((e.moisActuel - e.moisPrecedent) / e.moisPrecedent * 100).toFixed(1) : 0;
+      const position: 'better'|'same'|'worse' = variation < -3 ? 'better' : variation > 3 ? 'worse' : 'same';
+      const en = this.energies.find(en => en.nom === e.nom);
+      return {
+        energie:  `${this.getEnergieIcon(en ? Number(en.idEnergie) : 0)} ${e.nom}`,
+        unite:    e.unite, moisActuel: e.moisActuel, moisPrecedent: e.moisPrecedent,
+        moyenne:  e.moyenne, variation, position,
+        insight:  '⏳ Analyse IA en cours...', hasData: true,
+      };
+    });
+
+    this.aiLoadingBench = true;
+    this.aiSvc.getBenchmark({ energies: energiesPayload }).subscribe({
+      next: (result: BenchmarkIA) => {
+        this.benchmarkIA = result;
+        if (result.benchmarks?.length) {
+          this.benchmarkData = result.benchmarks.map(b => {
+            const en = this.energies.find(e => e.nom === b.energie);
+            return {
+              energie:  `${this.getEnergieIcon(en ? Number(en.idEnergie) : 0)} ${b.energie}`,
+              unite:    b.unite, moisActuel: b.moisActuel, moisPrecedent: b.moisPrecedent,
+              moyenne:  b.moyenne, variation: b.variation, position: b.position,
+              insight:  b.insight, hasData: b.hasData,
+            };
+          });
+        }
+        this.aiLoadingBench = false;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.aiLoadingBench = false;
+        this.benchmarkData = this.benchmarkData.map(b => ({
+          ...b, insight: b.insight.replace('⏳ Analyse IA en cours...', '⚠️ Service IA indisponible — analyse locale uniquement.'),
+        }));
+      },
+    });
   }
+
   get hasRankTimelineData(): boolean { return this.rankTimeline.some(r => r.pct > 0); }
 
   // ══════════════════════════════════════════════════════════════════════════
   // Prévisions
   // ══════════════════════════════════════════════════════════════════════════
 
-  recalculatePrevisions(): void { this.initPrevisions(); this.showToast('Prévisions recalculées.', 'success'); }
+  recalculatePrevisions(): void {
+    this.initPrevisions();
+    this.showToast('Prévisions IA en cours de calcul...', 'info');
+  }
 
   private initPrevisions(): void {
-    const linReg = (pts: {x: number; y: number}[]): {a: number; b: number; r2: number} => {
-      const n = pts.length; if (n < 2) return { a: 0, b: pts[0]?.y ?? 0, r2: 0 };
-      const sX = pts.reduce((s, p) => s + p.x, 0); const sY = pts.reduce((s, p) => s + p.y, 0);
-      const sXY = pts.reduce((s, p) => s + p.x * p.y, 0); const sX2 = pts.reduce((s, p) => s + p.x * p.x, 0);
-      const den = n * sX2 - sX * sX; if (den === 0) return { a: 0, b: sY / n, r2: 0 };
-      const a = (n * sXY - sX * sY) / den; const b = (sY - a * sX) / n;
-      const yM = sY / n; const ssTot = pts.reduce((s, p) => s + Math.pow(p.y - yM, 2), 0);
-      const ssRes = pts.reduce((s, p) => s + Math.pow(p.y - (a * p.x + b), 2), 0);
-      return { a, b, r2: ssTot > 0 ? Math.max(0, Math.min(1, 1 - ssRes / ssTot)) : 0 };
-    };
-
     const now = new Date();
-    const idE = this.idElec;
-    const idW = this.idEau;
-    const idG = this.idGazoil;
-
-    const getMP = (eid: number) => {
-      const pts: {x: number; y: number}[] = [];
+    const getMonthlyPoints = (eid: number): { mois: string; total: number }[] => {
+      const pts: { mois: string; total: number }[] = [];
       for (let i = 11; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const fin = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-        const t = this.mesures.filter(m => Number(m.energieId) === Number(eid)).filter(m => { const dm = new Date(m.dateMesure); return dm >= d && dm <= fin; }).reduce((s, m) => s + m.valeur, 0);
-        if (t > 0) pts.push({ x: 12 - i, y: +t.toFixed(1) });
+        const d     = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const fin   = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+        const label = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        const total = this.mesures
+          .filter(m => Number(m.energieId) === Number(eid))
+          .filter(m => { const dm = new Date(m.dateMesure); return dm >= d && dm <= fin; })
+          .reduce((s, m) => s + m.valeur, 0);
+        if (total > 0) pts.push({ mois: label, total: +total.toFixed(1) });
       }
       return pts;
     };
 
-    const ptE = idE ? getMP(idE) : [];
-    const ptW = idW ? getMP(idW) : [];
-    const ptG = idG ? getMP(idG) : [];
+    const ptE = this.idElec   ? getMonthlyPoints(this.idElec)   : [];
+    const ptW = this.idEau    ? getMonthlyPoints(this.idEau)    : [];
+    const ptG = this.idGazoil ? getMonthlyPoints(this.idGazoil) : [];
 
-    const MIN = 3;
+    const MIN = 2;
     if (ptE.length < MIN && ptW.length < MIN && ptG.length < MIN) {
       this.previsionMoisProchain = { elec: 0, eau: 0, gazoil: 0, fiabilite: 0, elecTrend: 'flat', elecVar: '0', hasEnoughData: false };
-      this.previsionRecos = [{ titre: 'Données insuffisantes', description: `Minimum ${MIN} mois requis.`, economie: 0, urgence: 'normale' }];
-      this.forecastPoints = []; return;
+      this.previsionRecos = [{ titre: 'Données insuffisantes', description: `Minimum ${MIN} mois de données requis pour les prévisions IA.`, economie: 0, urgence: 'normale' }];
+      this.forecastPoints = [];
+      return;
     }
-    const rE = ptE.length >= 2 ? linReg(ptE) : { a: 0, b: 0, r2: 0 };
-    const rW = ptW.length >= 2 ? linReg(ptW) : { a: 0, b: 0, r2: 0 };
-    const rG = ptG.length >= 2 ? linReg(ptG) : { a: 0, b: 0, r2: 0 };
-    const nX = 13;
-    const pE = ptE.length >= 2 ? Math.max(0, Math.round(rE.a * nX + rE.b)) : (ptE[0]?.y ?? 0);
-    const pW = ptW.length >= 2 ? Math.max(0, Math.round(rW.a * nX + rW.b)) : (ptW[0]?.y ?? 0);
-    const pG = ptG.length >= 2 ? Math.max(0, Math.round(rG.a * nX + rG.b)) : (ptG[0]?.y ?? 0);
-    const cE = ptE.length ? ptE[ptE.length-1].y : 0;
-    const varE = cE > 0 ? +Math.abs(((pE - cE)/cE)*100).toFixed(1) : 0;
-    const tot = ptE.length + ptW.length + ptG.length;
-    const fid = tot >= 3 ? Math.round(((rE.r2*ptE.length + rW.r2*ptW.length + rG.r2*ptG.length) / Math.max(1,tot)) * 100) : 0;
-    this.previsionMoisProchain = { elec: pE, eau: pW, gazoil: pG, fiabilite: Math.max(5, Math.min(99, fid)), elecTrend: pE > cE*1.03 ? 'up' : pE < cE*0.97 ? 'down' : 'flat', elecVar: String(varE), hasEnoughData: true };
-    this.previsionRecos = [];
 
-    const nomElec   = this.getEnergieNom(idE);
-    const nomGazoil = this.getEnergieNom(idG);
+    this.aiLoading = true;
+    this.previsionMoisProchain = { ...this.previsionMoisProchain, hasEnoughData: true };
 
-    if (ptE.length >= 2 && rE.a > 0)  this.previsionRecos.push({ titre: `Tendance ${nomElec} en hausse`, description: `+${rE.a.toFixed(1)} ${this.getEnergieUnite(idE)}/mois sur ${ptE.length} mois. Fiabilité : ${Math.round(rE.r2*100)}%.`, economie: Math.max(0, Math.round(rE.a * this.getTarifById(idE) * 12)), urgence: rE.a > 50 ? 'haute' : 'normale' });
-    else if (ptE.length >= 2 && rE.a < 0) this.previsionRecos.push({ titre: `Bonne tendance ${nomElec}`, description: `Réduction de ${Math.abs(rE.a).toFixed(1)} ${this.getEnergieUnite(idE)}/mois sur ${ptE.length} mois.`, economie: Math.round(Math.abs(rE.a) * this.getTarifById(idE) * 3), urgence: 'normale' });
-    if (ptG.length >= 2 && rG.a > 0) this.previsionRecos.push({ titre: `Hausse du ${nomGazoil}`, description: `+${rG.a.toFixed(1)} ${this.getEnergieUnite(idG)}/mois sur ${ptG.length} mois.`, economie: Math.round(rG.a * this.getTarifById(idG) * 3), urgence: 'haute' });
-    if (!this.previsionRecos.length) this.previsionRecos.push({ titre: 'Consommations stables', description: `Stables sur ${Math.max(ptE.length,ptW.length,ptG.length)} mois. Fiabilité : ${fid}%.`, economie: 0, urgence: 'normale' });
-    this.buildForecastPoints();
-  }
+    const payload = {
+      energies: [
+        { nom: NOM_ELECTRICITE, unite: this.getEnergieUnite(this.idElec),   mois: ptE },
+        { nom: NOM_EAU,         unite: this.getEnergieUnite(this.idEau),    mois: ptW },
+        { nom: NOM_GAZOIL,      unite: this.getEnergieUnite(this.idGazoil), mois: ptG },
+      ].filter(e => e.mois.length >= MIN),
+    };
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // Heatmap
-  // ══════════════════════════════════════════════════════════════════════════
-
-  onHeatmapEnergieChange(): void { this.initHeatmap(); }
-
-  get heatmapHoursWithData(): number {
-    const debut = new Date(Date.now() - 7*86400000);
-    return this.mesures.filter(m => Number(m.energieId) === Number(this.heatmapEnergie) && new Date(m.dateMesure) >= debut).length;
-  }
-  get heatmapHasDayData(): boolean { return this.heatmapData.some(row => row.some(v => v > 0)); }
-
-  get heatmapPeakPct(): number {
-    if (!this.heatmapData.length) return 0;
-    const peak = [8,9,10,11,14,15,16,17]; const off = [22,23,0,1,2,3,4,5];
-    const pV = this.heatmapData.flatMap(r => peak.map(h => r[h])).filter(v => v > 0);
-    const oV = this.heatmapData.flatMap(r => off.map(h => r[h])).filter(v => v > 0);
-    if (!pV.length || !oV.length) return 0;
-    const pA = pV.reduce((s,v)=>s+v,0)/pV.length; const oA = oV.reduce((s,v)=>s+v,0)/oV.length;
-    return oA > 0 ? Math.round(((pA-oA)/oA)*100) : 0;
-  }
-  get heatmapEconomy(): number {
-    if (!this.heatmapData.length) return 0;
-    const t = this.heatmapData.reduce((s,r)=>s+r.reduce((rs,v)=>rs+v,0),0);
-    return t ? +(t*0.2*this.tarifKwh*4).toFixed(0) : 0;
-  }
-  getHeatColor(val: number): string {
-    if (!val) return 'rgba(0,0,0,0.04)';
-    const all = this.heatmapData.flat().filter(v => v > 0);
-    if (!all.length) return 'rgba(0,0,0,0.04)';
-    const r = Math.min(1, val / Math.max(...all));
-    if (r < 0.25) return `rgba(99,102,241,${0.15 + r * 0.9})`;
-    if (r < 0.5)  return `rgba(20,184,166,${0.3 + r * 0.7})`;
-    if (r < 0.75) return `rgba(245,158,11,${0.4 + r * 0.6})`;
-    return `rgba(239,68,68,${0.5 + r * 0.5})`;
-  }
-
-  private initHeatmap(): void {
-    const days = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']; const now = new Date();
-    this.heatmapDays = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(now); d.setDate(d.getDate() - 6 + i);
-      return days[d.getDay() === 0 ? 6 : d.getDay() - 1] + ' ' + d.getDate();
-    });
-    this.heatmapHourLabels = Array.from({ length: 24 }, (_, i) => i % 4 === 0 ? (i<10?'0'+i:''+i)+'h' : '');
-    const eid = +this.heatmapEnergie;
-    const mf = this.mesures.filter(m => Number(m.energieId) === Number(eid));
-    this.heatmapData = Array.from({ length: 7 }, (_, di) => {
-      const d = new Date(now); d.setDate(d.getDate() - 6 + di);
-      const ds = d.toDateString();
-      return Array.from({ length: 24 }, (_, hi) => {
-        const mh = mf.filter(m => { const dm = new Date(m.dateMesure); return dm.toDateString() === ds && dm.getHours() === hi; });
-        return mh.length ? +(mh.reduce((s,m)=>s+m.valeur,0)/mh.length).toFixed(1) : 0;
-      });
+    this.aiSvc.getPrevisions(payload).subscribe({
+      next: (result: PrevisionIA) => {
+        this.previsionMoisProchain = {
+          elec:          result.elec          ?? 0,
+          eau:           result.eau           ?? 0,
+          gazoil:        result.gazoil        ?? 0,
+          fiabilite:     result.fiabilite     ?? 0,
+          elecTrend:     result.elecTrend     ?? 'flat',
+          elecVar:       result.elecVar       ?? '0',
+          hasEnoughData: result.hasEnoughData ?? true,
+        };
+        this.previsionRaisonnement = result.raisonnement ?? '';
+        this.previsionRecos = (result.recos ?? []).map(r => ({
+          titre: r.titre, description: r.description, economie: r.economie, urgence: r.urgence,
+        }));
+        this.aiLoading = false;
+        this.buildForecastPoints();
+        this.showToast('✅ Prévisions IA générées !', 'success');
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.aiLoading = false;
+        this.previsionRecos = [{ titre: 'Service IA indisponible', description: 'Vérifiez que FastAPI tourne sur le port 8000.', economie: 0, urgence: 'normale' }];
+        this.showToast('⚠️ FastAPI indisponible.', 'warn');
+      },
     });
   }
 
@@ -1733,18 +1833,17 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       this.syncSeuilsActuelles();
       this.initBenchmarking();
       this.initPrevisions();
-      this.initHeatmap();
       this.buildForecastPoints();
       this.buildSparklines();
     };
 
     this.api.getMesures().subscribe({
-      next: (d: unknown[]) => { this.mesures = d.map(m => this.normalizeMesure(m)); check(); },
-      error: () => { this.apiErrors['mesures'] = true; check(); },
+      next:  (d: unknown[]) => { this.mesures = d.map(m => this.normalizeMesure(m)); check(); },
+      error: ()             => { this.apiErrors['mesures'] = true; check(); },
     });
     this.api.getAlertes().subscribe({
-      next: (d: unknown[]) => { this.alertes = d.map(a => this.normalizeAlerte(a)); check(); },
-      error: () => { this.apiErrors['alertes'] = true; check(); },
+      next:  (d: unknown[]) => { this.alertes = d.map(a => this.normalizeAlerte(a)); check(); },
+      error: ()             => { this.apiErrors['alertes'] = true; check(); },
     });
     this.api.getAnomalies().subscribe({
       next: (d: unknown[]) => {
@@ -1755,24 +1854,24 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       error: () => { this.apiErrors['anomalies'] = true; check(); },
     });
     this.api.getRecommandations().subscribe({
-      next: (d: Recommandation[]) => { this.recommandations = d; check(); },
-      error: () => { this.apiErrors['recommandations'] = true; check(); },
+      next:  (d: Recommandation[]) => { this.recommandations = d; check(); },
+      error: ()                    => { this.apiErrors['recommandations'] = true; check(); },
     });
     this.api.getEquipements().subscribe({
-      next: (d: unknown[]) => { this.equipements = d.map(e => this.normalizeEquipement(e)); check(); },
-      error: () => { this.apiErrors['equipements'] = true; check(); },
+      next:  (d: unknown[]) => { this.equipements = d.map(e => this.normalizeEquipement(e)); check(); },
+      error: ()             => { this.apiErrors['equipements'] = true; check(); },
     });
     this.api.getEnergies().subscribe({
-      next: (d: unknown[]) => { this.energies = d.map(e => this.normalizeEnergie(e)); check(); },
-      error: () => { this.apiErrors['energies'] = true; check(); },
+      next:  (d: unknown[]) => { this.energies = d.map(e => this.normalizeEnergie(e)); check(); },
+      error: ()             => { this.apiErrors['energies'] = true; check(); },
     });
     this.api.getZones().subscribe({
-      next: (d: Zone[]) => { this.zones = d; check(); },
-      error: () => { this.apiErrors['zones'] = true; check(); },
+      next:  (d: Zone[]) => { this.zones = d; check(); },
+      error: ()          => { this.apiErrors['zones'] = true; check(); },
     });
   }
 
-  get hasApiErrors(): boolean { return Object.keys(this.apiErrors).length > 0; }
+  get hasApiErrors():  boolean  { return Object.keys(this.apiErrors).length > 0; }
   get apiErrorsList(): string[] { return Object.keys(this.apiErrors); }
 
   logout(): void { this.auth.logout(); }
