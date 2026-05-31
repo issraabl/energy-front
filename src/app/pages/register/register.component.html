@@ -54,8 +54,8 @@
           </svg>
         </div>
         <div class="stat-body">
-          <strong>6 rôles disponibles</strong>
-          <span>Énergie · Eau · Gaz · Électricité · Employé</span>
+          <strong>4 rôles disponibles</strong>
+          <span>Admin · Eau · Gaz · Électricité</span>
         </div>
       </div>
       <div class="stat-item">
@@ -281,62 +281,113 @@
         <ng-container *ngIf="step() === 2">
 
           <div class="roles-grid">
-            <div class="role-card"
-                 *ngFor="let role of roles; trackBy: trackById"
-                 [class.role-card--selected]="isRoleSelected(role.id)"
-                 [attr.data-color]="role.colorKey"
-                 (click)="selectRole(role.id)">
 
+            <!-- ── Administrateur ── -->
+            <div class="role-card"
+                 [class.role-card--selected]="isRoleSelected('administrateur')"
+                 data-color="red"
+                 (click)="selectRole('administrateur')">
               <div class="role-check">
                 <svg width="12" height="12" fill="none" viewBox="0 0 24 24">
                   <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5"
                         stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </div>
-
               <div class="role-icon-wrap">
-                <ng-container [ngSwitch]="role.id">
-                  <svg *ngSwitchCase="'administrateur'" width="20" height="20" fill="none" viewBox="0 0 24 24">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
-                          stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-                  </svg>
-                  <svg *ngSwitchCase="'responsable_energie'" width="20" height="20" fill="none" viewBox="0 0 24 24">
-                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"
-                              stroke="currentColor" stroke-width="1.6"
-                              stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                  <svg *ngSwitchCase="'responsable_eau'" width="20" height="20" fill="none" viewBox="0 0 24 24">
-                    <path d="M12 2C6 8 4 13 4 16a8 8 0 0016 0c0-3-2-8-8-14z"
-                          stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-                  </svg>
-                  <svg *ngSwitchCase="'responsable_gaz'" width="20" height="20" fill="none" viewBox="0 0 24 24">
-                    <path d="M12 2a7 7 0 00-7 7c0 4 3 6 4 9h6c1-3 4-5 4-9a7 7 0 00-7-7z"
-                          stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-                    <path d="M9 18h6M10 21h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                  </svg>
-                  <svg *ngSwitchCase="'responsable_electricite'" width="20" height="20" fill="none" viewBox="0 0 24 24">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"
-                          stroke="currentColor" stroke-width="1.6"
-                          stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                  <svg *ngSwitchCase="'employe'" width="20" height="20" fill="none" viewBox="0 0 24 24">
-                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"
-                          stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                    <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="1.6"/>
-                  </svg>
-                </ng-container>
+                <svg width="20" height="20" fill="none" viewBox="0 0 24 24">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+                        stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                </svg>
               </div>
-
-              <p class="role-name">{{ role.label }}</p>
-              <p class="role-desc">{{ role.description }}</p>
-
+              <p class="role-name">Administrateur</p>
+              <p class="role-desc">Contrôle total de la plateforme et de ses utilisateurs.</p>
               <ul class="role-perms">
-                <li *ngFor="let perm of role.permissions">
-                  <span class="perm-dot"></span>{{ perm }}
-                </li>
+                <li><span class="perm-dot"></span>Gestion complète des utilisateurs</li>
+                <li><span class="perm-dot"></span>Accès à tous les modules</li>
+                <li><span class="perm-dot"></span>Configuration système</li>
               </ul>
-
             </div>
+
+            <!-- ── Responsable Eau ── -->
+            <div class="role-card"
+                 [class.role-card--selected]="isRoleSelected('responsable_eau')"
+                 data-color="teal"
+                 (click)="selectRole('responsable_eau')">
+              <div class="role-check">
+                <svg width="12" height="12" fill="none" viewBox="0 0 24 24">
+                  <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="role-icon-wrap">
+                <svg width="20" height="20" fill="none" viewBox="0 0 24 24">
+                  <path d="M12 2C6 8 4 13 4 16a8 8 0 0016 0c0-3-2-8-8-14z"
+                        stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <p class="role-name">Resp. Eau</p>
+              <p class="role-desc">Supervision des mesures et alertes liées à la consommation d'eau.</p>
+              <ul class="role-perms">
+                <li><span class="perm-dot"></span>Lecture des mesures eau</li>
+                <li><span class="perm-dot"></span>Gestion des alertes eau</li>
+                <li><span class="perm-dot"></span>Export rapports eau</li>
+              </ul>
+            </div>
+
+            <!-- ── Responsable Gaz ── -->
+            <div class="role-card"
+                 [class.role-card--selected]="isRoleSelected('responsable_gaz')"
+                 data-color="amber"
+                 (click)="selectRole('responsable_gaz')">
+              <div class="role-check">
+                <svg width="12" height="12" fill="none" viewBox="0 0 24 24">
+                  <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="role-icon-wrap">
+                <svg width="20" height="20" fill="none" viewBox="0 0 24 24">
+                  <path d="M12 2a7 7 0 00-7 7c0 4 3 6 4 9h6c1-3 4-5 4-9a7 7 0 00-7-7z"
+                        stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                  <path d="M9 18h6M10 21h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <p class="role-name">Resp. Gaz</p>
+              <p class="role-desc">Surveillance de la consommation de gaz et gestion des seuils associés.</p>
+              <ul class="role-perms">
+                <li><span class="perm-dot"></span>Lecture des mesures gaz</li>
+                <li><span class="perm-dot"></span>Gestion des alertes gaz</li>
+                <li><span class="perm-dot"></span>Export rapports gaz</li>
+              </ul>
+            </div>
+
+            <!-- ── Responsable Électricité ── -->
+            <div class="role-card"
+                 [class.role-card--selected]="isRoleSelected('responsable_electricite')"
+                 data-color="blue"
+                 (click)="selectRole('responsable_electricite')">
+              <div class="role-check">
+                <svg width="12" height="12" fill="none" viewBox="0 0 24 24">
+                  <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="role-icon-wrap">
+                <svg width="20" height="20" fill="none" viewBox="0 0 24 24">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"
+                        stroke="currentColor" stroke-width="1.6"
+                        stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <p class="role-name">Resp. Électricité</p>
+              <p class="role-desc">Pilotage des données électriques et des équipements associés.</p>
+              <ul class="role-perms">
+                <li><span class="perm-dot"></span>Lecture des mesures électriques</li>
+                <li><span class="perm-dot"></span>Gestion des alertes électricité</li>
+                <li><span class="perm-dot"></span>Export rapports électricité</li>
+              </ul>
+            </div>
+
           </div>
 
           <p class="role-hint" *ngIf="roleError()">

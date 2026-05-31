@@ -16,11 +16,9 @@ import { AuthService } from '../../core/auth/auth.service';
 
 export type AppRole =
   | 'administrateur'
-  | 'responsable_energie'
   | 'responsable_eau'
   | 'responsable_gaz'
-  | 'responsable_electricite'
-  | 'employe';
+  | 'responsable_electricite';
 
 @Component({
   selector:    'wic-register',
@@ -47,7 +45,7 @@ export class RegisterComponent implements OnInit {
   /* ── Form ─────────────────────────────────────── */
   form!: FormGroup;
 
-  /* ── Roles (6) ──────────────────────────────────── */
+  /* ── Roles (4) ──────────────────────────────────── */
   readonly roles: {
     id:          AppRole;
     label:       string;
@@ -65,18 +63,6 @@ export class RegisterComponent implements OnInit {
         'Structure organisationnelle complète',
         'Supervision de toute la plateforme',
         'Accès à tous les modules',
-      ],
-    },
-    {
-      id:          'responsable_energie',
-      label:       'Responsable énergie',
-      description: 'Suivi, analyse et optimisation énergétique globale',
-      colorKey:    'teal',
-      permissions: [
-        'Saisie et import de données énergétiques',
-        'Tableaux de bord et KPI globaux',
-        'Analyse des anomalies de consommation',
-        'Recommandations et alertes',
       ],
     },
     {
@@ -115,18 +101,6 @@ export class RegisterComponent implements OnInit {
         'Gestion des équipements électriques',
       ],
     },
-    {
-      id:          'employe',
-      label:       'Employé',
-      description: 'Accès en lecture aux données énergétiques',
-      colorKey:    'gray',
-      permissions: [
-        'Consultation des données disponibles',
-        'Visualisation des graphiques',
-        'Accès aux informations générales',
-        'Aucune modification possible',
-      ],
-    },
   ];
 
   constructor(
@@ -136,7 +110,6 @@ export class RegisterComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    // Récupérer le nom de l'admin connecté
     const user = this.auth.getCurrentUser();
     this.adminName.set(user?.nom ?? 'Administrateur');
 
@@ -221,7 +194,6 @@ export class RegisterComponent implements OnInit {
         this.successMsg.set(
           `Le compte de ${this.form.value.fullName} (${this.selectedRole()}) a été créé avec succès.`
         );
-        // Réinitialiser le formulaire pour créer un autre compte
         this.form.reset();
         this.selectedRole.set(null);
         this.step.set(1);

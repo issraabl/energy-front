@@ -103,7 +103,30 @@
         <span class="nav-new" *ngIf="!navCollapsed">NEW</span>
       </button>
 
-     
+      <!-- ══ 3 NOUVEAUX BOUTONS IA ══ -->
+      <button class="nav-item" [class.active]="activeTab==='anomalies-ia'" (click)="activeTab='anomalies-ia'">
+        <div class="nav-item-icon ico--red">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.8"/><path d="M12 9v4M12 17h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </div>
+        <span class="nav-item-text" *ngIf="!navCollapsed">Anomalies IA</span>
+        <span class="nav-new" *ngIf="!navCollapsed">IA</span>
+      </button>
+
+      <button class="nav-item" [class.active]="activeTab==='recommandations-ia'" (click)="activeTab='recommandations-ia'">
+        <div class="nav-item-icon ico--green">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </div>
+        <span class="nav-item-text" *ngIf="!navCollapsed">Recommandations IA</span>
+        <span class="nav-new" *ngIf="!navCollapsed">IA</span>
+      </button>
+
+      <button class="nav-item" [class.active]="activeTab==='rapport-ia'" (click)="activeTab='rapport-ia'">
+        <div class="nav-item-icon ico--purple">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" stroke-width="1.8"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.8"/><line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="1.8"/><line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="1.8"/></svg>
+        </div>
+        <span class="nav-item-text" *ngIf="!navCollapsed">Rapport IA</span>
+        <span class="nav-new" *ngIf="!navCollapsed">IA</span>
+      </button>
 
     </nav>
 
@@ -260,7 +283,7 @@
           <button class="btn-primary" (click)="showMesureModal=true" *ngIf="canEdit">Saisir une mesure →</button>
         </div>
 
-        <!-- KPIs basés sur la période filtrée -->
+        <!-- KPIs -->
         <div class="kpi-grid">
           <div class="kpi kpi--accent">
             <div class="kpi-top">
@@ -556,10 +579,61 @@
               <div class="equip-detail-row"><span class="equip-detail-lbl">Âge</span><span class="equip-detail-val">{{ getEquipAgeAns(e) }}</span></div>
               <div class="equip-detail-row"><span class="equip-detail-lbl">Mesures</span><span class="equip-detail-val">{{ getMesuresForEquip(e) }}</span></div>
             </div>
-            <div class="equip-acts" *ngIf="canEdit">
-              <button class="btn-ghost btn-sm" (click)="openEditEquipement(e)">Modifier</button>
-              <button class="btn-ghost btn-sm" (click)="toggleEquipStatut(e)">{{ (e.statut||'Actif')==='Actif' ? 'Désactiver' : 'Activer' }}</button>
-            </div>
+           <div class="equip-acts" *ngIf="canEdit">
+
+  <button class="btn-ghost btn-sm" (click)="openEditEquipement(e)">Modifier</button>
+  <button class="btn-ghost btn-sm" (click)="toggleEquipStatut(e)">
+    {{ (e.statut||'Actif')==='Actif' ? 'Désactiver' : 'Activer' }}
+  </button>
+
+  <!-- Bouton supprimer normal -->
+  <button
+    class="btn-delete btn-sm"
+    *ngIf="!isDeletePendingEquipement(e)"
+    (click)="showDeleteConfirmEquipement(e)"
+    aria-label="Supprimer l'équipement">
+    <svg width="13" height="13" fill="none" viewBox="0 0 24 24">
+      <polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    Supprimer
+  </button>
+
+  <!-- Dialog de confirmation inline -->
+  <div
+    class="confirm-inline"
+    *ngIf="isDeletePendingEquipement(e)"
+    role="alertdialog"
+    aria-label="Confirmer la suppression de l'équipement">
+
+    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" style="color:var(--red-text);flex-shrink:0">
+      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M12 9v4M12 17h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+
+    <span class="confirm-inline-text">Supprimer ?</span>
+
+    <button
+      class="btn-confirm-yes"
+      (click)="deleteEquipement(e)"
+      aria-label="Confirmer">
+      <svg width="11" height="11" fill="none" viewBox="0 0 24 24">
+        <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+      Oui
+    </button>
+
+    <button
+      class="btn-confirm-no"
+      (click)="cancelDeleteEquipement(e)"
+      aria-label="Annuler">
+      Annuler
+    </button>
+  </div>
+
+</div>
             <div class="equip-acts" *ngIf="!canEdit">
               <span class="tag tag--ghost" style="font-size:10px">🔒 Consultation</span>
             </div>
@@ -648,14 +722,66 @@
                   <td><span class="tag" [class.tag--blue]="a.sourceAuto" [class.tag--ghost]="!a.sourceAuto">{{ a.sourceAuto ? '⚡ Auto' : '✍ Manuel' }}</span></td>
                   <td><span class="tag" [class.tag--danger]="!a.traite" [class.tag--success]="a.traite">{{ a.traite ? '✓ Traitée' : 'Active' }}</span></td>
                   <td *ngIf="canEdit">
-                    <div style="display:flex;gap:4px">
-                      <button class="btn-treat" (click)="traiterAlerte(a)" *ngIf="!a.traite">
-                        <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        Traiter
-                      </button>
-                      <button class="btn-danger-sm" (click)="deleteAlerte(a)">🗑</button>
-                    </div>
-                  </td>
+  <div style="display:flex; gap:4px; align-items:center">
+
+    <!-- Bouton traiter (inchangé) -->
+    <button class="btn-treat" (click)="traiterAlerte(a)" *ngIf="!a.traite">
+      <svg width="11" height="11" fill="none" viewBox="0 0 24 24">
+        <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+      Traiter
+    </button>
+
+    <!-- Bouton supprimer normal -->
+    <button
+      class="btn-delete"
+      *ngIf="!isDeletePendingAlerte(a)"
+      (click)="showDeleteConfirmAlerte(a)"
+      [attr.aria-label]="'Supprimer l\'alerte'">
+      <svg width="13" height="13" fill="none" viewBox="0 0 24 24">
+        <polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      Supprimer
+    </button>
+
+    <!-- Dialog de confirmation inline -->
+    <div
+      class="confirm-inline"
+      *ngIf="isDeletePendingAlerte(a)"
+      role="alertdialog"
+      aria-label="Confirmer la suppression">
+
+      <!-- Icône alerte -->
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" style="color:var(--red-text);flex-shrink:0">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.8"/>
+        <path d="M12 9v4M12 17h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+
+      <span class="confirm-inline-text">Supprimer ?</span>
+
+      <button
+        class="btn-confirm-yes"
+        (click)="deleteAlerte(a)"
+        aria-label="Confirmer la suppression">
+        <svg width="11" height="11" fill="none" viewBox="0 0 24 24">
+          <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        Oui
+      </button>
+
+      <button
+        class="btn-confirm-no"
+        (click)="cancelDeleteAlerte(a)"
+        aria-label="Annuler la suppression">
+        Annuler
+      </button>
+    </div>
+
+  </div>
+</td>
                 </tr>
                 <tr *ngIf="!filteredAlertes.length"><td [attr.colspan]="canEdit?8:7" class="empty-td">✓ Aucune alerte correspondante</td></tr>
               </tbody>
@@ -798,6 +924,13 @@
               <svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" stroke-width="1.8"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.8"/></svg>
               Excel
             </button>
+            <button class="btn-email" (click)="openEmailModal()" [disabled]="!previsionMoisProchain.hasEnoughData">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke="currentColor" stroke-width="1.8"/>
+                <polyline points="22,6 12,13 2,6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+              Email
+            </button>
           </div>
         </div>
         <div class="onboarding-banner" *ngIf="!previsionMoisProchain.hasEnoughData">
@@ -849,163 +982,880 @@
         </div>
       </section>
 
-      
 
-<!-- ══════════════════════════════════════════════════════════
-     MODALS
-══════════════════════════════════════════════════════════ -->
+      <!-- ══════════════════════════════════════════════════════════
+           US-56 — DÉTECTION ANOMALIES IA
+      ══════════════════════════════════════════════════════════ -->
+      <section *ngIf="activeTab==='anomalies-ia'" class="page-fade">
 
-<!-- Modal Mesure -->
-<div class="modal-overlay" *ngIf="showMesureModal&&canEdit" (click)="showMesureModal=false">
-  <div class="modal" (click)="$event.stopPropagation()">
-    <div class="modal-hd">
-      <div><h3 class="modal-title">Saisir une mesure</h3><p class="modal-sub">Enregistrez une nouvelle valeur énergétique</p></div>
-      <button class="modal-close" (click)="showMesureModal=false">✕</button>
-    </div>
-    <div class="success-flash" *ngIf="mesureSaved"><svg width="15" height="15" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Mesure enregistrée !</div>
-    <form [formGroup]="mesureForm" (ngSubmit)="saveMesure()" class="modal-body">
-      <div class="form-grid-2">
-        <div class="form-field"><label>Valeur <span class="req">*</span></label><input type="number" formControlName="valeur" placeholder="Ex : 125.5" step="0.1"/><span class="field-err" *ngIf="mesureForm.get('valeur')?.invalid&&mesureForm.get('valeur')?.touched">Valeur requise (>= 0)</span></div>
-        <div class="form-field"><label>Date & heure <span class="req">*</span></label><input type="datetime-local" formControlName="dateMesure"/></div>
-      </div>
-      <div class="form-grid-2">
-        <div class="form-field"><label>Énergie <span class="req">*</span></label><select formControlName="energieId"><option value="">— Sélectionner —</option><option *ngFor="let en of energies" [value]="en.idEnergie">{{ en.nom }} ({{ en.unite }})</option></select></div>
-        <div class="form-field"><label>Source <span class="req">*</span></label><select formControlName="sourceDonnee"><option value="Saisie manuelle">Saisie manuelle</option><option value="Capteur">Capteur automatique</option><option value="Import Excel">Import fichier</option></select></div>
-      </div>
-      <div class="form-field"><label>Équipement <span class="opt">(optionnel)</span></label><select formControlName="equipementId"><option value="">— Aucun —</option><option *ngFor="let e of equipements" [value]="e.idEquipement">{{ e.nom }}</option></select></div>
-      <div class="form-field"><label>Commentaire <span class="opt">(optionnel)</span></label><textarea formControlName="commentaire" placeholder="Contexte de la mesure…" rows="2"></textarea></div>
-      <div class="threshold-alert" *ngIf="+mesureForm.get('valeur')?.value>alertThreshold">⚠ Valeur supérieure au seuil d'alerte ({{ alertThreshold }})</div>
-      <div class="modal-ft">
-        <button type="button" class="btn-ghost" (click)="resetMesureForm()">Réinitialiser</button>
-        <button type="button" class="btn-ghost" (click)="showMesureModal=false">Annuler</button>
-        <button type="submit" class="btn-primary" [disabled]="mesureSaving||mesureForm.invalid"><span class="btn-spin" *ngIf="mesureSaving"></span>{{ mesureSaving ? 'Enregistrement…' : 'Enregistrer' }}</button>
-      </div>
-    </form>
-  </div>
-</div>
+        <div class="page-hd">
+          <div>
+            <h1 class="page-title">Détection Anomalies IA</h1>
+            <p class="page-sub">Analyse automatique via Z-score & IQR · {{ mesures.length }} mesures analysées</p>
+          </div>
+          <div class="page-acts">
+            <span class="new-feat-badge">IA</span>
+            <button class="btn-ghost" (click)="lancerDetectionAnomalies()" [disabled]="aiLoadingAnomalies">
+              <span class="btn-spin" *ngIf="aiLoadingAnomalies"></span>
+              <svg *ngIf="!aiLoadingAnomalies" width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              {{ aiLoadingAnomalies ? 'Analyse en cours…' : 'Relancer l\'analyse' }}
+            </button>
+          </div>
+        </div>
 
-<!-- Modal Équipement -->
-<div class="modal-overlay" *ngIf="showEquipementModal&&canEdit" (click)="showEquipementModal=false">
-  <div class="modal modal--lg" (click)="$event.stopPropagation()">
-    <div class="modal-hd">
-      <div><h3 class="modal-title">{{ editingEquipement ? 'Modifier l\'équipement' : 'Nouvel équipement' }}</h3><p class="modal-sub">{{ editingEquipement ? 'Mettez à jour les informations' : 'Ajoutez un équipement au parc' }}</p></div>
-      <button class="modal-close" (click)="showEquipementModal=false">✕</button>
-    </div>
-    <div class="success-flash" *ngIf="equipementSaved"><svg width="15" height="15" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ editingEquipement ? 'Équipement modifié !' : 'Équipement ajouté !' }}</div>
-    <form [formGroup]="equipementForm" (ngSubmit)="saveEquipement()" class="modal-body">
-      <div class="form-grid-2">
-        <div class="form-field"><label>Nom <span class="req">*</span></label><input type="text" formControlName="nom" placeholder="Ex : Compresseur C1"/></div>
-        <div class="form-field"><label>Type <span class="req">*</span></label><select formControlName="typeEquipement"><option value="">— Sélectionner —</option><option value="Compresseur">Compresseur</option><option value="Pompe">Pompe</option><option value="CVC">CVC</option><option value="Chaudière">Chaudière</option><option value="Éclairage">Éclairage</option><option value="Générateur">Générateur</option><option value="Moteur">Moteur</option><option value="Convoyeur">Convoyeur</option><option value="Machine textile">Machine textile</option><option value="Machine packaging">Machine packaging</option><option value="Autre">Autre</option></select></div>
-      </div>
-      <div class="form-grid-2">
-        <div class="form-field"><label>Statut <span class="req">*</span></label><select formControlName="statut"><option value="Actif">Actif</option><option value="Maintenance">Maintenance</option><option value="Inactif">Inactif</option></select></div>
-        <div class="form-field"><label>Puissance (kW) <span class="req">*</span></label><input type="number" formControlName="puissance" placeholder="Ex : 15" min="0" step="0.1"/></div>
-      </div>
-      <div class="form-grid-2">
-        <div class="form-field"><label>Localisation <span class="req">*</span></label><input type="text" formControlName="localisation" placeholder="Ex : Atelier A"/></div>
-        <div class="form-field"><label>Date mise en service <span class="req">*</span></label><input type="date" formControlName="dateInstallation"/></div>
-      </div>
-      <div class="form-grid-2">
-        <div class="form-field"><label>Énergie <span class="opt">(optionnel)</span></label><select formControlName="energieId"><option value="">— Aucune —</option><option *ngFor="let en of energies" [value]="en.idEnergie">{{ en.nom }}</option></select></div>
-        <div class="form-field"><label>Zone <span class="opt">(optionnel)</span></label><select formControlName="zoneId"><option value="">— Aucune —</option><option *ngFor="let z of zones" [value]="z.idZone">{{ z.nom }}</option></select></div>
-      </div>
-      <div class="form-field"><label>Description <span class="opt">(optionnel)</span></label><textarea formControlName="description" placeholder="Notes…" rows="2"></textarea></div>
-      <div class="modal-ft">
-        <button type="button" class="btn-ghost" (click)="showEquipementModal=false">Annuler</button>
-        <button type="submit" class="btn-primary" [disabled]="equipementSaving||equipementForm.invalid"><span class="btn-spin" *ngIf="equipementSaving"></span>{{ equipementSaving ? 'Enregistrement…' : (editingEquipement ? 'Modifier' : 'Ajouter') }}</button>
-      </div>
-    </form>
-  </div>
-</div>
+        <!-- Loading state -->
+        <div class="loading-wrap" *ngIf="aiLoadingAnomalies" style="padding:60px 0">
+          <div class="loading-box">
+            <div class="loading-ring"></div>
+            <p class="loading-text">Analyse des anomalies en cours…</p>
+            <p style="font-size:12px;color:var(--text-3,#9ca3af);margin-top:6px">Z-score + IQR sur {{ mesures.length }} mesures</p>
+          </div>
+        </div>
 
-<!-- Modal Alerte -->
-<div class="modal-overlay" *ngIf="showAlerteModal&&canEdit" (click)="showAlerteModal=false">
-  <div class="modal" (click)="$event.stopPropagation()">
-    <div class="modal-hd">
-      <div><h3 class="modal-title">Créer une alerte</h3><p class="modal-sub">Alerte manuelle</p></div>
-      <button class="modal-close" (click)="showAlerteModal=false">✕</button>
-    </div>
-    <div class="success-flash" *ngIf="alerteSaved">Alerte créée !</div>
-    <form [formGroup]="alerteForm" (ngSubmit)="saveAlerte()" class="modal-body">
-      <div class="form-grid-2">
-        <div class="form-field"><label>Type <span class="req">*</span></label><select formControlName="type"><option value="Dépassement seuil">Dépassement seuil</option><option value="Anomalie détectée">Anomalie détectée</option><option value="Maintenance requise">Maintenance requise</option><option value="Consommation excessive">Consommation excessive</option><option value="Autre">Autre</option></select></div>
-        <div class="form-field"><label>Sévérité <span class="req">*</span></label><select formControlName="severite"><option value="Normale">Normale</option><option value="Haute">Haute</option><option value="Critique">Critique</option></select></div>
-      </div>
-      <div class="form-field"><label>Message <span class="req">*</span></label><textarea formControlName="message" placeholder="Décrivez l'alerte…" rows="3"></textarea></div>
-      <div class="form-grid-2">
-        <div class="form-field"><label>Seuil associé <span class="opt">(optionnel)</span></label><input type="text" formControlName="seuil" placeholder="Ex : 5000 kWh"/></div>
-        <div class="form-field"><label>Énergie <span class="opt">(optionnel)</span></label><select formControlName="energieId"><option value="">— Aucune —</option><option *ngFor="let en of energies" [value]="en.idEnergie">{{ en.nom }}</option></select></div>
-      </div>
-      <div class="modal-ft">
-        <button type="button" class="btn-ghost" (click)="showAlerteModal=false">Annuler</button>
-        <button type="submit" class="btn-primary" [disabled]="alerteSaving||alerteForm.invalid"><span class="btn-spin" *ngIf="alerteSaving"></span>{{ alerteSaving ? 'Création…' : 'Créer l\'alerte' }}</button>
-      </div>
-    </form>
-  </div>
-</div>
+        <!-- Résultats -->
+        <div *ngIf="!aiLoadingAnomalies && anomaliesIA">
 
-<!-- ══════════════════════════════════════════════════════════
-     CHAT IA
-══════════════════════════════════════════════════════════ -->
-<div class="chat-panel" [class.chat-open]="showChat">
-  <div class="chat-top">
-    <div class="chat-id">
-      <div class="chat-avatar">🤖</div>
-      <div><p class="chat-name">Assistant Énergie IA</p><p class="chat-powered">Alimenté par Ollama</p></div>
-    </div>
-    <button class="chat-close" (click)="showChat=false">✕</button>
-  </div>
-  <div class="chat-ctx">
-    <span>Période: <strong>{{ dateRangeLabel }}</strong></span>
-    <span class="ctx-sep">·</span>
-    <span>Conso.: <strong>{{ coutPeriodeFiltree>0 ? coutPeriodeFiltree+' DT' : '—' }}</strong></span>
-    <span class="ctx-sep">·</span>
-    <span [class.ctx-danger]="alertesNonTraitees>0">Alertes: <strong>{{ alertesNonTraitees }}</strong></span>
-    <span class="ctx-sep">·</span>
-    <span>Mesures: <strong>{{ mesuresFiltreesParDate.length }}</strong></span>
-    <span class="ctx-sep">·</span>
-    <span>Score: <strong>{{ efficiencyScore }}/100</strong></span>
-  </div>
-  <div class="chat-messages" #chatScrollRef>
-    <div *ngFor="let m of messages" class="msg" [class.msg--user]="m.role==='user'" [class.msg--bot]="m.role==='assistant'">
-      <div class="msg-avatar" [class.msg-avatar--user]="m.role==='user'">{{ m.role==='user' ? (currentUser?.nom?.charAt(0) | uppercase) : '🤖' }}</div>
-      <div class="msg-bubble"><p class="msg-text">{{ m.content }}</p><span class="msg-time">{{ m.time | date:'HH:mm' }}</span></div>
-    </div>
-    <div class="msg msg--bot" *ngIf="chatLoading">
-      <div class="msg-avatar">🤖</div>
-      <div class="msg-bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div>
-    </div>
-  </div>
-  <div class="chat-sugg">
-    <span class="sugg-lbl">Suggestions</span>
-    <div class="sugg-list">
-      <button class="sugg-btn" (click)="sendSuggestion('Comment réduire ma consommation ce mois ?')">Économies</button>
-      <button class="sugg-btn" (click)="sendSuggestion('Analyse mes anomalies en cours')">Anomalies</button>
-      <button class="sugg-btn" (click)="sendSuggestion('Quels équipements consomment le plus ?')">Énergivores</button>
-      <button class="sugg-btn" (click)="sendSuggestion('Interprète mon score efficacité')">Score</button>
-    </div>
-  </div>
-  <div class="chat-input-zone">
-    <div class="chat-input-row">
-      <textarea class="chat-ta" [(ngModel)]="chatInput" (keydown.enter)="onChatEnter($event)" placeholder="Posez votre question énergie…" rows="1" [disabled]="chatLoading"></textarea>
-      <button class="chat-send" (click)="sendChat()" [disabled]="chatLoading||!chatInput.trim()">
-        <div class="btn-spin" *ngIf="chatLoading"></div>
-        <svg *ngIf="!chatLoading" width="16" height="16" fill="none" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polygon points="22 2 15 22 11 13 2 9 22 2" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>
-      </button>
-    </div>
-    <p class="chat-hint"><code>Entrée</code> envoyer · <code>Shift+Entrée</code> nouvelle ligne</p>
-  </div>
-</div>
-<div class="chat-backdrop" *ngIf="showChat" (click)="showChat=false"></div>
+          <!-- Score santé -->
+          <div class="eff-banner"
+               [class.eff-banner--good]="anomaliesIA.score_sante>=80"
+               [class.eff-banner--warn]="anomaliesIA.score_sante>=60&&anomaliesIA.score_sante<80"
+               [class.eff-banner--bad]="anomaliesIA.score_sante<60"
+               style="margin-bottom:16px;">
+            <div class="eff-banner-left">
+              <div class="eff-banner-score">{{ anomaliesIA.score_sante }}</div>
+              <div class="eff-banner-info">
+                <div class="eff-banner-title">Score de santé énergétique</div>
+                <div class="eff-banner-sub">
+                  {{ anomaliesIA.nb_critiques }} critique(s) ·
+                  {{ anomaliesIA.nb_hautes }} haute(s) ·
+                  {{ anomaliesIA.nb_normales }} normale(s)
+                </div>
+                <span class="eff-banner-grade tag"
+                      [class.tag--success]="anomaliesIA.score_sante>=80"
+                      [class.tag--warn]="anomaliesIA.score_sante>=60&&anomaliesIA.score_sante<80"
+                      [class.tag--danger]="anomaliesIA.score_sante<60">
+                  {{ anomaliesIA.score_sante>=80 ? '✓ Excellent' : anomaliesIA.score_sante>=60 ? '⚠ À surveiller' : '✕ Critique' }}
+                </span>
+              </div>
+            </div>
+            <div class="eff-banner-right">
+              <div class="eff-bar-track">
+                <div class="eff-bar-fill" [style.width.%]="anomaliesIA.score_sante"></div>
+              </div>
+            </div>
+          </div>
 
-<!-- ══ TOASTS ══ -->
-<div class="toast-container">
-  <div class="toast" *ngFor="let t of toasts"
-    [class.toast--success]="t.type==='success'"
-    [class.toast--error]="t.type==='error'"
-    [class.toast--info]="t.type==='info'"
-    [class.toast--warn]="t.type==='warn'">
-    <span>{{ t.msg }}</span>
-    <button (click)="dismissToast(t.id)" class="toast-close">✕</button>
-  </div>
-</div>
+          <!-- Résumé IA -->
+          <div class="glass" style="margin-bottom:16px;padding:18px 22px;">
+            <div style="display:flex;align-items:flex-start;gap:12px;">
+              <div style="width:32px;height:32px;background:rgba(99,102,241,0.1);border-radius:8px;
+                          display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" stroke="#6366f1" stroke-width="1.8"/>
+                  <path d="M12 8v4M12 16h.01" stroke="#6366f1" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <div>
+                <p style="font-size:12px;font-weight:700;color:var(--text-1,#111827);margin:0 0 4px;text-transform:uppercase;letter-spacing:.4px;">Résumé IA</p>
+                <p style="font-size:13px;color:var(--text-2,#6b7280);line-height:1.6;margin:0;">{{ anomaliesIA.resume }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stats KPIs anomalies -->
+          <div class="stats-strip" style="margin-bottom:16px;">
+            <div class="stat-chip stat-chip--danger">
+              <span class="stat-v">{{ anomaliesIA.nb_critiques }}</span>
+              <span class="stat-l">Critiques</span>
+            </div>
+            <div class="stat-chip stat-chip--warn">
+              <span class="stat-v">{{ anomaliesIA.nb_hautes }}</span>
+              <span class="stat-l">Hautes</span>
+            </div>
+            <div class="stat-chip">
+              <span class="stat-v">{{ anomaliesIA.nb_normales }}</span>
+              <span class="stat-l">Normales</span>
+            </div>
+            <div class="stat-chip stat-chip--success">
+              <span class="stat-v">{{ anomaliesIA.score_sante }}/100</span>
+              <span class="stat-l">Score santé</span>
+            </div>
+          </div>
+
+          <!-- Aucune anomalie -->
+          <div class="onboarding-banner" *ngIf="!anomaliesIA.anomalies?.length">
+            <div class="onboarding-ico">✅</div>
+            <div class="onboarding-text">
+              <strong>Aucune anomalie détectée</strong>
+              <p>Toutes les consommations sont dans les normes habituelles.</p>
+            </div>
+          </div>
+
+          <!-- Tableau des anomalies -->
+          <div class="glass" *ngIf="anomaliesIA.anomalies?.length">
+            <div class="card-hd">
+              <div>
+                <h3 class="card-title">Anomalies détectées automatiquement</h3>
+                <p class="card-sub">Méthode : Z-score + IQR · {{ anomaliesIA.anomalies.length }} anomalie(s) identifiée(s)</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="data-tbl">
+                <thead>
+                  <tr>
+                    <th>Sévérité</th>
+                    <th>Énergie</th>
+                    <th>Date</th>
+                    <th>Valeur mesurée</th>
+                    <th>Moyenne normale</th>
+                    <th>Écart</th>
+                    <th>Type</th>
+                    <th>Méthode</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let a of anomaliesIA.anomalies"
+                      [class.row-crit]="a.severite==='critique'"
+                      [class.row-high]="a.severite==='haute'">
+                    <td>
+                      <div class="sev-row">
+                        <span class="sev-dot"
+                              [class.sev-red]="a.severite==='critique'"
+                              [class.sev-amber]="a.severite==='haute'"
+                              [class.sev-green]="a.severite==='normale'">
+                        </span>
+                        <span style="text-transform:capitalize;">{{ a.severite }}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span style="font-weight:600;">{{ a.energie }}</span>
+                      <span style="font-size:11px;color:var(--text-3,#9ca3af);margin-left:4px;">{{ a.unite }}</span>
+                    </td>
+                    <td class="td-mono td-dim">{{ a.date }}</td>
+                    <td>
+                      <span style="font-weight:700;"
+                            [style.color]="a.ecart_pct > 0 ? 'var(--red-text,#dc2626)' : 'var(--green-text,#059669)'">
+                        {{ a.valeur }} {{ a.unite }}
+                      </span>
+                    </td>
+                    <td class="td-dim">{{ a.moyenne }} {{ a.unite }}</td>
+                    <td>
+                      <span class="tag"
+                            [class.tag--danger]="a.ecart_pct > 50"
+                            [class.tag--warn]="a.ecart_pct > 0 && a.ecart_pct <= 50"
+                            [class.tag--success]="a.ecart_pct < 0">
+                        {{ a.ecart_pct > 0 ? '+' : '' }}{{ a.ecart_pct }}%
+                      </span>
+                    </td>
+                    <td>
+                      <span class="tag"
+                            [class.tag--danger]="a.type==='Surconsommation'"
+                            [class.tag--blue]="a.type==='Sous-consommation'">
+                        {{ a.type }}
+                      </span>
+                    </td>
+                    <td class="td-dim" style="font-size:11px;">{{ a.methode }}</td>
+                  </tr>
+                  <tr *ngIf="!anomaliesIA.anomalies.length">
+                    <td colspan="8" class="empty-td">✓ Aucune anomalie</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div><!-- /résultats -->
+
+        <!-- État initial (avant première analyse) -->
+        <div *ngIf="!aiLoadingAnomalies && !anomaliesIA" class="onboarding-banner">
+          <div class="onboarding-ico">🔍</div>
+          <div class="onboarding-text">
+            <strong>Détection automatique d'anomalies</strong>
+            <p>Cliquez sur <strong>"Relancer l'analyse"</strong> pour détecter automatiquement les surconsommations et comportements inhabituels via Z-score + IQR.</p>
+          </div>
+          <button class="btn-primary" (click)="lancerDetectionAnomalies()">Lancer l'analyse →</button>
+        </div>
+
+      </section>
+
+
+      <!-- ══════════════════════════════════════════════════════════
+           US-57 — RECOMMANDATIONS IA
+      ══════════════════════════════════════════════════════════ -->
+      <section *ngIf="activeTab==='recommandations-ia'" class="page-fade">
+
+        <div class="page-hd">
+          <div>
+            <h1 class="page-title">Recommandations IA</h1>
+            <p class="page-sub">Optimisation énergétique · Basée sur vos données réelles</p>
+          </div>
+          <div class="page-acts">
+            <span class="new-feat-badge">IA</span>
+            <button class="btn-ghost" (click)="lancerRecommandations()" [disabled]="aiLoadingRecos">
+              <span class="btn-spin" *ngIf="aiLoadingRecos"></span>
+              <svg *ngIf="!aiLoadingRecos" width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              {{ aiLoadingRecos ? 'Génération…' : 'Régénérer' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <div class="loading-wrap" *ngIf="aiLoadingRecos" style="padding:60px 0">
+          <div class="loading-box">
+            <div class="loading-ring"></div>
+            <p class="loading-text">Génération des recommandations IA…</p>
+            <p style="font-size:12px;color:var(--text-3,#9ca3af);margin-top:6px">Analyse des tendances réelles en cours</p>
+          </div>
+        </div>
+
+        <!-- Résultats -->
+        <div *ngIf="!aiLoadingRecos && recommandationsIA">
+
+          <!-- Résumé + économie totale -->
+          <div style="display:grid;grid-template-columns:1fr auto;gap:14px;margin-bottom:16px;align-items:start;">
+
+            <div class="glass" style="padding:18px 22px;">
+              <div style="display:flex;align-items:flex-start;gap:12px;">
+                <div style="width:32px;height:32px;background:rgba(16,185,129,0.1);border-radius:8px;
+                            display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" stroke="#10b981" stroke-width="1.8"/>
+                    <path d="M12 8v4M12 16h.01" stroke="#10b981" stroke-width="1.8" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div>
+                  <p style="font-size:12px;font-weight:700;color:var(--text-1,#111827);margin:0 0 4px;text-transform:uppercase;letter-spacing:.4px;">Résumé IA</p>
+                  <p style="font-size:13px;color:var(--text-2,#6b7280);line-height:1.6;margin:0;">{{ recommandationsIA.resume }}</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="kpi kpi--green" style="min-width:160px;">
+              <div class="kpi-top">
+                <div class="kpi-icon kpi-icon--green">
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+              </div>
+              <span class="kpi-val kpi-val--green">{{ recommandationsIA.economie_totale }}</span>
+              <span class="kpi-lbl">Économie estimée (DT/mois)</span>
+              <div class="kpi-trend kpi-trend--down">{{ recommandationsIA.nb_haute }} action(s) prioritaire(s)</div>
+            </div>
+
+          </div>
+
+          <!-- Aucune recommandation -->
+          <div class="onboarding-banner" *ngIf="!recommandationsIA.recommandations?.length">
+            <div class="onboarding-ico">💡</div>
+            <div class="onboarding-text">
+              <strong>Aucune recommandation disponible</strong>
+              <p>Des données supplémentaires sont nécessaires pour générer des recommandations.</p>
+            </div>
+          </div>
+
+          <!-- Cartes recommandations -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;"
+               *ngIf="recommandationsIA.recommandations?.length">
+            <div class="glass" *ngFor="let r of recommandationsIA.recommandations"
+                 style="padding:20px;border-left:4px solid"
+                 [style.border-left-color]="r.priorite==='haute'?'#ef4444':r.priorite==='moyenne'?'#f59e0b':'#10b981'">
+
+              <!-- Header carte -->
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;"
+                       [style.background]="r.priorite==='haute'?'rgba(239,68,68,0.1)':r.priorite==='moyenne'?'rgba(245,158,11,0.1)':'rgba(16,185,129,0.1)'">
+                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24"
+                         [attr.stroke]="r.priorite==='haute'?'#ef4444':r.priorite==='moyenne'?'#f59e0b':'#10b981'">
+                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
+                  <p style="font-size:14px;font-weight:700;color:var(--text-1,#111827);margin:0;line-height:1.3;">{{ r.titre }}</p>
+                </div>
+                <span class="tag"
+                      [class.tag--danger]="r.priorite==='haute'"
+                      [class.tag--warn]="r.priorite==='moyenne'"
+                      [class.tag--success]="r.priorite==='faible'"
+                      style="white-space:nowrap;flex-shrink:0;">
+                  {{ r.priorite | titlecase }}
+                </span>
+              </div>
+
+              <!-- Description -->
+              <p style="font-size:13px;color:var(--text-2,#6b7280);line-height:1.6;margin:0 0 14px;">{{ r.description }}</p>
+
+              <!-- Méta -->
+              <div style="display:flex;flex-wrap:wrap;gap:8px;padding-top:12px;border-top:1px solid var(--border,rgba(0,0,0,0.07));">
+                <span style="display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;
+                             color:#10b981;background:rgba(16,185,129,0.08);padding:3px 8px;border-radius:20px;">
+                  💰 {{ r.economie_estimee }} DT/mois
+                </span>
+                <span style="display:flex;align-items:center;gap:4px;font-size:11px;
+                             color:var(--text-2,#6b7280);background:var(--bg-2,rgba(0,0,0,0.04));
+                             padding:3px 8px;border-radius:20px;">
+                  ⏱ {{ r.delai }}
+                </span>
+                <span style="display:flex;align-items:center;gap:4px;font-size:11px;
+                             color:var(--text-2,#6b7280);background:var(--bg-2,rgba(0,0,0,0.04));
+                             padding:3px 8px;border-radius:20px;">
+                  ⚡ {{ r.energie_ciblee }}
+                </span>
+                <span style="display:flex;align-items:center;gap:4px;font-size:11px;
+                             color:var(--text-2,#6b7280);background:var(--bg-2,rgba(0,0,0,0.04));
+                             padding:3px 8px;border-radius:20px;text-transform:capitalize;">
+                  🏷 {{ r.categorie }}
+                </span>
+              </div>
+
+            </div>
+          </div>
+
+        </div><!-- /résultats -->
+
+        <!-- État initial -->
+        <div *ngIf="!aiLoadingRecos && !recommandationsIA" class="onboarding-banner">
+          <div class="onboarding-ico">💡</div>
+          <div class="onboarding-text">
+            <strong>Recommandations intelligentes</strong>
+            <p>L'IA analyse vos tendances de consommation réelles et génère des recommandations concrètes pour réduire vos coûts.</p>
+          </div>
+          <button class="btn-primary" (click)="lancerRecommandations()">Générer les recommandations →</button>
+        </div>
+
+      </section>
+
+
+      <!-- ══════════════════════════════════════════════════════════
+           US-58 — RAPPORT IA
+      ══════════════════════════════════════════════════════════ -->
+      <section *ngIf="activeTab==='rapport-ia'" class="page-fade">
+
+        <div class="page-hd">
+          <div>
+            <h1 class="page-title">Rapport IA</h1>
+            <p class="page-sub">Rapport exécutif intelligent · Prise de décision stratégique</p>
+          </div>
+          <div class="page-acts">
+            <span class="new-feat-badge">IA</span>
+            <button class="btn-ghost" (click)="genererRapportIA()" [disabled]="aiLoadingRapport">
+              <span class="btn-spin" *ngIf="aiLoadingRapport"></span>
+              <svg *ngIf="!aiLoadingRapport" width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              {{ aiLoadingRapport ? 'Génération…' : 'Générer le rapport' }}
+            </button>
+            <button class="btn-email" (click)="openEmailModal()"
+                    [disabled]="!rapportIA || aiLoadingRapport">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke="currentColor" stroke-width="1.8"/>
+                <polyline points="22,6 12,13 2,6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+              Envoyer par email
+            </button>
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <div class="loading-wrap" *ngIf="aiLoadingRapport" style="padding:60px 0">
+          <div class="loading-box">
+            <div class="loading-ring"></div>
+            <p class="loading-text">Génération du rapport IA…</p>
+            <p style="font-size:12px;color:var(--text-3,#9ca3af);margin-top:6px">Analyse complète de vos données en cours</p>
+          </div>
+        </div>
+
+        <!-- Rapport généré -->
+        <div *ngIf="!aiLoadingRapport && rapportIA">
+
+          <!-- Header rapport -->
+          <div class="glass" style="padding:24px;margin-bottom:16px;background:linear-gradient(135deg,rgba(10,31,20,0.95),rgba(16,185,129,0.15));">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;">
+              <div>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                  <svg width="24" height="24" fill="none" viewBox="0 0 24 24">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#10b981"/>
+                  </svg>
+                  <span style="font-size:20px;font-weight:800;color:#fff;">TriPower — Rapport IA</span>
+                </div>
+                <p style="font-size:13px;color:rgba(255,255,255,0.6);margin:0;">
+                  Généré le {{ rapportIA.date_generation }} ·
+                  {{ rapportIA.nb_mesures }} mesures ·
+                  Période : {{ rapportIA.periode }}
+                </p>
+              </div>
+              <div style="display:flex;gap:10px;align-items:center;">
+                <div style="text-align:center;background:rgba(255,255,255,0.08);border-radius:10px;padding:10px 16px;">
+                  <div style="font-size:24px;font-weight:800;color:#10b981;">{{ rapportIA.score_sante }}</div>
+                  <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px;">Score santé</div>
+                </div>
+                <div style="text-align:center;background:rgba(255,255,255,0.08);border-radius:10px;padding:10px 16px;">
+                  <div style="font-size:24px;font-weight:800;color:#f59e0b;">{{ rapportIA.nb_anomalies }}</div>
+                  <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px;">Anomalies</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Résumé exécutif -->
+          <div class="glass" style="padding:20px 24px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+              <div style="width:4px;height:20px;background:#10b981;border-radius:2px;"></div>
+              <h3 style="font-size:15px;font-weight:700;color:var(--text-1,#111827);margin:0;">📋 Résumé Exécutif</h3>
+            </div>
+            <p style="font-size:14px;color:var(--text-2,#6b7280);line-height:1.7;margin:0;
+                      background:rgba(16,185,129,0.05);border-radius:8px;padding:14px 16px;
+                      border-left:3px solid #10b981;">
+              {{ rapportIA.resume_executif }}
+            </p>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+
+            <!-- Points clés -->
+            <div class="glass" style="padding:20px 24px;" *ngIf="rapportIA.points_cles?.length">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+                <div style="width:4px;height:20px;background:#f59e0b;border-radius:2px;"></div>
+                <h3 style="font-size:15px;font-weight:700;color:var(--text-1,#111827);margin:0;">⚠️ Points Critiques</h3>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div *ngFor="let p of rapportIA.points_cles"
+                     style="display:flex;align-items:flex-start;gap:8px;
+                            background:rgba(245,158,11,0.06);border-radius:6px;
+                            padding:10px 12px;border-left:3px solid #f59e0b;">
+                  <span style="color:#f59e0b;font-size:14px;flex-shrink:0;">⚠</span>
+                  <span style="font-size:13px;color:var(--text-2,#6b7280);line-height:1.5;">{{ p }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Décisions stratégiques -->
+            <div class="glass" style="padding:20px 24px;" *ngIf="rapportIA.decisions?.length">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+                <div style="width:4px;height:20px;background:#6366f1;border-radius:2px;"></div>
+                <h3 style="font-size:15px;font-weight:700;color:var(--text-1,#111827);margin:0;">🎯 Décisions Stratégiques</h3>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div *ngFor="let d of rapportIA.decisions; let i = index"
+                     style="display:flex;align-items:flex-start;gap:10px;
+                            background:rgba(99,102,241,0.06);border-radius:6px;
+                            padding:10px 12px;border-left:3px solid #6366f1;">
+                  <span style="width:20px;height:20px;background:#6366f1;border-radius:50%;
+                               display:flex;align-items:center;justify-content:center;
+                               font-size:11px;font-weight:700;color:#fff;flex-shrink:0;">{{ i+1 }}</span>
+                  <span style="font-size:13px;color:var(--text-2,#6b7280);line-height:1.5;">{{ d }}</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Stats par énergie -->
+          <div class="glass" style="margin-bottom:16px;" *ngIf="rapportIA.stats_energies">
+            <div class="card-hd">
+              <div>
+                <h3 class="card-title">📊 Statistiques par énergie</h3>
+                <p class="card-sub">Données réelles · Régression linéaire</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="data-tbl">
+                <thead>
+                  <tr>
+                    <th>Énergie</th>
+                    <th>Ce mois</th>
+                    <th>Mois préc.</th>
+                    <th>Variation</th>
+                    <th>Moyenne</th>
+                    <th>Prévision</th>
+                    <th>Tendance</th>
+                    <th>Fiabilité (R²)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let item of getRapportStatsArray()">
+                    <td style="font-weight:600;">{{ item.nom }}</td>
+                    <td class="td-mono">{{ item.stats.mois_actuel }} {{ item.stats.unite }}</td>
+                    <td class="td-mono td-dim">{{ item.stats.mois_precedent }} {{ item.stats.unite }}</td>
+                    <td>
+                      <span class="tag"
+                            [class.tag--danger]="item.stats.variation_pct > 3"
+                            [class.tag--success]="item.stats.variation_pct < -3"
+                            [class.tag--ghost]="item.stats.variation_pct >= -3 && item.stats.variation_pct <= 3">
+                        {{ item.stats.variation_pct > 0 ? '+' : '' }}{{ item.stats.variation_pct }}%
+                      </span>
+                    </td>
+                    <td class="td-dim">{{ item.stats.moyenne }} {{ item.stats.unite }}</td>
+                    <td style="font-weight:700;color:var(--accent,#6366f1);">{{ item.stats.prevision }} {{ item.stats.unite }}</td>
+                    <td>
+                      <span class="tag"
+                            [class.tag--danger]="item.stats.tendance==='up'"
+                            [class.tag--success]="item.stats.tendance==='down'"
+                            [class.tag--ghost]="item.stats.tendance==='flat'">
+                        {{ item.stats.tendance==='up' ? '↑ Hausse' : item.stats.tendance==='down' ? '↓ Baisse' : '→ Stable' }}
+                      </span>
+                    </td>
+                    <td>
+                      <div style="display:flex;align-items:center;gap:6px;">
+                        <div style="flex:1;height:4px;background:rgba(0,0,0,0.08);border-radius:2px;">
+                          <div style="height:100%;border-radius:2px;background:#10b981;"
+                               [style.width.%]="item.stats.r2 * 100"></div>
+                        </div>
+                        <span style="font-size:11px;color:var(--text-2,#6b7280);">{{ (item.stats.r2 * 100).toFixed(0) }}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Top 3 anomalies -->
+          <div class="glass" style="padding:20px 24px;" *ngIf="rapportIA.anomalies_top3?.length">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <div style="width:4px;height:20px;background:#ef4444;border-radius:2px;"></div>
+              <h3 style="font-size:15px;font-weight:700;color:var(--text-1,#111827);margin:0;">🔴 Top 3 Anomalies Critiques</h3>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div *ngFor="let a of rapportIA.anomalies_top3"
+                   style="display:flex;align-items:center;gap:12px;
+                          background:rgba(239,68,68,0.05);border-radius:8px;
+                          padding:12px 14px;border-left:3px solid #ef4444;">
+                <span class="sev-dot sev-red" style="flex-shrink:0;"></span>
+                <div style="flex:1;">
+                  <span style="font-size:13px;font-weight:600;color:var(--text-1,#111827);">{{ a.energie }} — {{ a.date }}</span>
+                  <p style="font-size:12px;color:var(--text-2,#6b7280);margin:2px 0 0;">{{ a.description }}</p>
+                </div>
+                <span class="tag tag--danger">{{ a.ecart_pct > 0 ? '+' : '' }}{{ a.ecart_pct }}%</span>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /rapport généré -->
+
+        <!-- État initial -->
+        <div *ngIf="!aiLoadingRapport && !rapportIA" class="onboarding-banner">
+          <div class="onboarding-ico">📊</div>
+          <div class="onboarding-text">
+            <strong>Rapport IA intelligent</strong>
+            <p>Générez un rapport exécutif complet basé sur l'IA : résumé, tendances, anomalies, prévisions et décisions stratégiques.</p>
+          </div>
+          <button class="btn-primary" (click)="genererRapportIA()">Générer le rapport →</button>
+        </div>
+
+      </section>
+
+
+      <!-- ══════════════════════════════════════════════════════════
+           MODALS
+      ══════════════════════════════════════════════════════════ -->
+
+      <!-- Modal Mesure -->
+      <div class="modal-overlay" *ngIf="showMesureModal&&canEdit" (click)="showMesureModal=false">
+        <div class="modal" (click)="$event.stopPropagation()">
+          <div class="modal-hd">
+            <div><h3 class="modal-title">Saisir une mesure</h3><p class="modal-sub">Enregistrez une nouvelle valeur énergétique</p></div>
+            <button class="modal-close" (click)="showMesureModal=false">✕</button>
+          </div>
+          <div class="success-flash" *ngIf="mesureSaved"><svg width="15" height="15" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Mesure enregistrée !</div>
+          <form [formGroup]="mesureForm" (ngSubmit)="saveMesure()" class="modal-body">
+            <div class="form-grid-2">
+              <div class="form-field"><label>Valeur <span class="req">*</span></label><input type="number" formControlName="valeur" placeholder="Ex : 125.5" step="0.1"/><span class="field-err" *ngIf="mesureForm.get('valeur')?.invalid&&mesureForm.get('valeur')?.touched">Valeur requise (>= 0)</span></div>
+              <div class="form-field"><label>Date & heure <span class="req">*</span></label><input type="datetime-local" formControlName="dateMesure"/></div>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-field"><label>Énergie <span class="req">*</span></label><select formControlName="energieId"><option value="">— Sélectionner —</option><option *ngFor="let en of energies" [value]="en.idEnergie">{{ en.nom }} ({{ en.unite }})</option></select></div>
+              <div class="form-field"><label>Source <span class="req">*</span></label><select formControlName="sourceDonnee"><option value="Saisie manuelle">Saisie manuelle</option><option value="Capteur">Capteur automatique</option><option value="Import Excel">Import fichier</option></select></div>
+            </div>
+            <div class="form-field"><label>Équipement <span class="opt">(optionnel)</span></label><select formControlName="equipementId"><option value="">— Aucun —</option><option *ngFor="let e of equipements" [value]="e.idEquipement">{{ e.nom }}</option></select></div>
+            <div class="form-field"><label>Commentaire <span class="opt">(optionnel)</span></label><textarea formControlName="commentaire" placeholder="Contexte de la mesure…" rows="2"></textarea></div>
+            <div class="threshold-alert" *ngIf="+mesureForm.get('valeur')?.value>alertThreshold">⚠ Valeur supérieure au seuil d'alerte ({{ alertThreshold }})</div>
+            <div class="modal-ft">
+              <button type="button" class="btn-ghost" (click)="resetMesureForm()">Réinitialiser</button>
+              <button type="button" class="btn-ghost" (click)="showMesureModal=false">Annuler</button>
+              <button type="submit" class="btn-primary" [disabled]="mesureSaving||mesureForm.invalid"><span class="btn-spin" *ngIf="mesureSaving"></span>{{ mesureSaving ? 'Enregistrement…' : 'Enregistrer' }}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Modal Équipement -->
+      <div class="modal-overlay" *ngIf="showEquipementModal&&canEdit" (click)="showEquipementModal=false">
+        <div class="modal modal--lg" (click)="$event.stopPropagation()">
+          <div class="modal-hd">
+            <div><h3 class="modal-title">{{ editingEquipement ? 'Modifier l\'équipement' : 'Nouvel équipement' }}</h3><p class="modal-sub">{{ editingEquipement ? 'Mettez à jour les informations' : 'Ajoutez un équipement au parc' }}</p></div>
+            <button class="modal-close" (click)="showEquipementModal=false">✕</button>
+          </div>
+          <div class="success-flash" *ngIf="equipementSaved"><svg width="15" height="15" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ editingEquipement ? 'Équipement modifié !' : 'Équipement ajouté !' }}</div>
+          <form [formGroup]="equipementForm" (ngSubmit)="saveEquipement()" class="modal-body">
+            <div class="form-grid-2">
+              <div class="form-field"><label>Nom <span class="req">*</span></label><input type="text" formControlName="nom" placeholder="Ex : Compresseur C1"/></div>
+              <div class="form-field"><label>Type <span class="req">*</span></label><select formControlName="typeEquipement"><option value="">— Sélectionner —</option><option value="Compresseur">Compresseur</option><option value="Pompe">Pompe</option><option value="CVC">CVC</option><option value="Chaudière">Chaudière</option><option value="Éclairage">Éclairage</option><option value="Générateur">Générateur</option><option value="Moteur">Moteur</option><option value="Convoyeur">Convoyeur</option><option value="Machine textile">Machine textile</option><option value="Machine packaging">Machine packaging</option><option value="Autre">Autre</option></select></div>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-field"><label>Statut <span class="req">*</span></label><select formControlName="statut"><option value="Actif">Actif</option><option value="Maintenance">Maintenance</option><option value="Inactif">Inactif</option></select></div>
+              <div class="form-field"><label>Puissance (kW) <span class="req">*</span></label><input type="number" formControlName="puissance" placeholder="Ex : 15" min="0" step="0.1"/></div>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-field"><label>Localisation <span class="req">*</span></label><input type="text" formControlName="localisation" placeholder="Ex : Atelier A"/></div>
+              <div class="form-field"><label>Date mise en service <span class="req">*</span></label><input type="date" formControlName="dateInstallation"/></div>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-field"><label>Énergie <span class="opt">(optionnel)</span></label><select formControlName="energieId"><option value="">— Aucune —</option><option *ngFor="let en of energies" [value]="en.idEnergie">{{ en.nom }}</option></select></div>
+              <div class="form-field"><label>Zone <span class="opt">(optionnel)</span></label><select formControlName="zoneId"><option value="">— Aucune —</option><option *ngFor="let z of zones" [value]="z.idZone">{{ z.nom }}</option></select></div>
+            </div>
+            <div class="form-field"><label>Description <span class="opt">(optionnel)</span></label><textarea formControlName="description" placeholder="Notes…" rows="2"></textarea></div>
+            <div class="modal-ft">
+              <button type="button" class="btn-ghost" (click)="showEquipementModal=false">Annuler</button>
+              <button type="submit" class="btn-primary" [disabled]="equipementSaving||equipementForm.invalid"><span class="btn-spin" *ngIf="equipementSaving"></span>{{ equipementSaving ? 'Enregistrement…' : (editingEquipement ? 'Modifier' : 'Ajouter') }}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Modal Alerte -->
+      <div class="modal-overlay" *ngIf="showAlerteModal&&canEdit" (click)="showAlerteModal=false">
+        <div class="modal" (click)="$event.stopPropagation()">
+          <div class="modal-hd">
+            <div><h3 class="modal-title">Créer une alerte</h3><p class="modal-sub">Alerte manuelle</p></div>
+            <button class="modal-close" (click)="showAlerteModal=false">✕</button>
+          </div>
+          <div class="success-flash" *ngIf="alerteSaved">Alerte créée !</div>
+          <form [formGroup]="alerteForm" (ngSubmit)="saveAlerte()" class="modal-body">
+            <div class="form-grid-2">
+              <div class="form-field"><label>Type <span class="req">*</span></label><select formControlName="type"><option value="Dépassement seuil">Dépassement seuil</option><option value="Anomalie détectée">Anomalie détectée</option><option value="Maintenance requise">Maintenance requise</option><option value="Consommation excessive">Consommation excessive</option><option value="Autre">Autre</option></select></div>
+              <div class="form-field"><label>Sévérité <span class="req">*</span></label><select formControlName="severite"><option value="Normale">Normale</option><option value="Haute">Haute</option><option value="Critique">Critique</option></select></div>
+            </div>
+            <div class="form-field"><label>Message <span class="req">*</span></label><textarea formControlName="message" placeholder="Décrivez l'alerte…" rows="3"></textarea></div>
+            <div class="form-grid-2">
+              <div class="form-field"><label>Seuil associé <span class="opt">(optionnel)</span></label><input type="text" formControlName="seuil" placeholder="Ex : 5000 kWh"/></div>
+              <div class="form-field"><label>Énergie <span class="opt">(optionnel)</span></label><select formControlName="energieId"><option value="">— Aucune —</option><option *ngFor="let en of energies" [value]="en.idEnergie">{{ en.nom }}</option></select></div>
+            </div>
+            <div class="modal-ft">
+              <button type="button" class="btn-ghost" (click)="showAlerteModal=false">Annuler</button>
+              <button type="submit" class="btn-primary" [disabled]="alerteSaving||alerteForm.invalid"><span class="btn-spin" *ngIf="alerteSaving"></span>{{ alerteSaving ? 'Création…' : 'Créer l\'alerte' }}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════
+           MODAL EMAIL RAPPORT IA
+      ══════════════════════════════════════════════════════════ -->
+      <div class="modal-overlay" *ngIf="showEmailModal" (click)="closeEmailModal()">
+        <div class="modal" (click)="$event.stopPropagation()">
+
+          <!-- Header -->
+          <div class="modal-hd">
+            <div>
+              <h3 class="modal-title">
+                <svg width="15" height="15" fill="none" viewBox="0 0 24 24"
+                     style="vertical-align:-2px;margin-right:6px;">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
+                        stroke="#10b981" stroke-width="1.8"/>
+                  <polyline points="22,6 12,13 2,6" stroke="#10b981" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+                Envoyer le Rapport IA
+              </h3>
+              <p class="modal-sub">Rapport de prévisions · {{ dateRangeLabel }}</p>
+            </div>
+            <button class="modal-close" (click)="closeEmailModal()">✕</button>
+          </div>
+
+          <!-- Succès -->
+          <div class="email-success" *ngIf="emailSent">
+            <div class="email-success-ico">
+              <svg width="52" height="52" fill="none" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" stroke="#10b981" stroke-width="1.5"
+                        fill="rgba(16,185,129,0.08)"/>
+                <path d="M8 12l3 3 5-5" stroke="#10b981" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <p class="email-success-title">Rapport envoyé !</p>
+            <p class="email-success-sub">Transmis à <strong>{{ emailDestinataire }}</strong></p>
+            <button class="btn-primary btn-sm" style="margin-top:18px" (click)="closeEmailModal()">Fermer</button>
+          </div>
+
+          <!-- Erreur -->
+          <div *ngIf="emailError"
+               style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);color:#dc2626;
+                      border-radius:8px;padding:10px 14px;font-size:13px;display:flex;align-items:center;
+                      gap:8px;margin:0 0 16px;">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                    stroke="currentColor" stroke-width="1.8"/>
+            </svg>
+            {{ emailError }}
+          </div>
+
+          <!-- Formulaire -->
+          <div class="modal-body" *ngIf="!emailSent">
+
+            <!-- Aperçu contenu -->
+            <div style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);
+                        border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+              <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;
+                          color:#10b981;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="#10b981" stroke-width="1.8"/>
+                  <polyline points="14 2 14 8 20 8" stroke="#10b981" stroke-width="1.8"/>
+                </svg>
+                Contenu du rapport
+              </div>
+              <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;">
+                <li style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-2,#6b7280)">
+                  <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"/></svg>
+                  Résumé exécutif IA — {{ dateRangeLabel }}
+                </li>
+                <li style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-2,#6b7280)">
+                  <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"/></svg>
+                  Prévisions mois prochain (Élec. · Eau · Gazoil)
+                </li>
+                <li style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-2,#6b7280)">
+                  <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"/></svg>
+                  Score d'efficacité : {{ efficiencyScore }}/100 — Grade {{ efficiencyGrade }}
+                </li>
+                <li style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-2,#6b7280)">
+                  <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"/></svg>
+                  Benchmark & recommandations prioritaires
+                </li>
+                <li *ngIf="alertesNonTraitees > 0"
+                    style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#d97706">
+                  <svg width="11" height="11" fill="none" viewBox="0 0 24 24">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                          stroke="#d97706" stroke-width="1.8"/>
+                  </svg>
+                  {{ alertesNonTraitees }} alerte(s) active(s) à traiter
+                </li>
+              </ul>
+            </div>
+
+            <!-- Champs -->
+            <div class="form-grid-2">
+              <div class="form-field">
+                <label>Nom du destinataire <span class="opt">(optionnel)</span></label>
+                <input type="text"
+                       [(ngModel)]="emailNom"
+                       placeholder="Ex : Mohamed Ali"
+                       [disabled]="emailSending"/>
+              </div>
+              <div class="form-field">
+                <label>Email <span class="req">*</span></label>
+                <input type="email"
+                       [(ngModel)]="emailDestinataire"
+                       placeholder="exemple@société.com"
+                       [disabled]="emailSending"/>
+                <span class="field-err"
+                      *ngIf="emailDestinataire && !isValidEmail(emailDestinataire)">
+                  Adresse email invalide
+                </span>
+              </div>
+            </div>
+
+            <div class="form-field">
+              <label>Objet <span class="opt">(optionnel)</span></label>
+              <input type="text"
+                     [(ngModel)]="emailObjet"
+                     [placeholder]="emailObjetDefault"
+                     [disabled]="emailSending"/>
+            </div>
+
+            <div class="form-field">
+              <label>Note personnalisée <span class="opt">(optionnel)</span></label>
+              <textarea [(ngModel)]="emailNote"
+                        placeholder="Contexte ou commentaire supplémentaire…"
+                        rows="2"
+                        [disabled]="emailSending"></textarea>
+            </div>
+
+            <!-- Footer modal -->
+            <div class="modal-ft">
+              <button type="button" class="btn-ghost"
+                      (click)="closeEmailModal()"
+                      [disabled]="emailSending">
+                Annuler
+              </button>
+              <button type="button"
+                      class="btn-primary"
+                      (click)="envoyerRapportEmail()"
+                      [disabled]="!emailDestinataire || !isValidEmail(emailDestinataire) || emailSending">
+                <span class="btn-spin" *ngIf="emailSending"></span>
+                <svg *ngIf="!emailSending" width="13" height="13" fill="none" viewBox="0 0 24 24"
+                     style="margin-right:4px">
+                  <line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+                </svg>
+                {{ emailSending ? 'Envoi en cours…' : 'Envoyer le rapport' }}
+              </button>
+            </div>
+
+          </div><!-- /modal-body -->
+        </div><!-- /modal -->
+      </div><!-- /modal-overlay email -->
+
+      <!-- ══════════════════════════════════════════════════════════
+           CHAT IA
+      ══════════════════════════════════════════════════════════ -->
+      <div class="chat-panel" [class.chat-open]="showChat">
+        <div class="chat-top">
+          <div class="chat-id">
+            <div class="chat-avatar">🤖</div>
+            <div><p class="chat-name">Assistant Énergie IA</p><p class="chat-powered">Alimenté par Ollama</p></div>
+          </div>
+          <button class="chat-close" (click)="showChat=false">✕</button>
+        </div>
+        <div class="chat-ctx">
+          <span>Période: <strong>{{ dateRangeLabel }}</strong></span>
+          <span class="ctx-sep">·</span>
+          <span>Conso.: <strong>{{ coutPeriodeFiltree>0 ? coutPeriodeFiltree+' DT' : '—' }}</strong></span>
+          <span class="ctx-sep">·</span>
+          <span [class.ctx-danger]="alertesNonTraitees>0">Alertes: <strong>{{ alertesNonTraitees }}</strong></span>
+          <span class="ctx-sep">·</span>
+          <span>Mesures: <strong>{{ mesuresFiltreesParDate.length }}</strong></span>
+          <span class="ctx-sep">·</span>
+          <span>Score: <strong>{{ efficiencyScore }}/100</strong></span>
+        </div>
+        <div class="chat-messages" #chatScrollRef>
+          <div *ngFor="let m of messages" class="msg" [class.msg--user]="m.role==='user'" [class.msg--bot]="m.role==='assistant'">
+            <div class="msg-avatar" [class.msg-avatar--user]="m.role==='user'">{{ m.role==='user' ? (currentUser?.nom?.charAt(0) | uppercase) : '🤖' }}</div>
+            <div class="msg-bubble"><p class="msg-text">{{ m.content }}</p><span class="msg-time">{{ m.time | date:'HH:mm' }}</span></div>
+          </div>
+          <div class="msg msg--bot" *ngIf="chatLoading">
+            <div class="msg-avatar">🤖</div>
+            <div class="msg-bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div>
+          </div>
+        </div>
+        <div class="chat-sugg">
+          <span class="sugg-lbl">Suggestions</span>
+          <div class="sugg-list">
+            <button class="sugg-btn" (click)="sendSuggestion('Comment réduire ma consommation ce mois ?')">Économies</button>
+            <button class="sugg-btn" (click)="sendSuggestion('Analyse mes anomalies en cours')">Anomalies</button>
+            <button class="sugg-btn" (click)="sendSuggestion('Quels équipements consomment le plus ?')">Énergivores</button>
+            <button class="sugg-btn" (click)="sendSuggestion('Interprète mon score efficacité')">Score</button>
+          </div>
+        </div>
+        <div class="chat-input-zone">
+          <div class="chat-input-row">
+            <textarea class="chat-ta" [(ngModel)]="chatInput" (keydown.enter)="onChatEnter($event)" placeholder="Posez votre question énergie…" rows="1" [disabled]="chatLoading"></textarea>
+            <button class="chat-send" (click)="sendChat()" [disabled]="chatLoading||!chatInput.trim()">
+              <div class="btn-spin" *ngIf="chatLoading"></div>
+              <svg *ngIf="!chatLoading" width="16" height="16" fill="none" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polygon points="22 2 15 22 11 13 2 9 22 2" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <p class="chat-hint"><code>Entrée</code> envoyer · <code>Shift+Entrée</code> nouvelle ligne</p>
+        </div>
+      </div>
+      <div class="chat-backdrop" *ngIf="showChat" (click)="showChat=false"></div>
+
+      <!-- ══ TOASTS ══ -->
+      <div class="toast-container">
+        <div class="toast" *ngFor="let t of toasts"
+          [class.toast--success]="t.type==='success'"
+          [class.toast--error]="t.type==='error'"
+          [class.toast--info]="t.type==='info'"
+          [class.toast--warn]="t.type==='warn'">
+          <span>{{ t.msg }}</span>
+          <button (click)="dismissToast(t.id)" class="toast-close">✕</button>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /shell -->

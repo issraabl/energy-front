@@ -1464,3 +1464,68 @@
   .content     { padding: 16px; }
   .date-filter-bar { padding: 8px 16px; }
 }
+/* ══════════════════════════════════════════════════════════
+   BOUTON SUPPRIMER + DIALOG CONFIRMATION INLINE
+══════════════════════════════════════════════════════════ */
+
+.btn-delete {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-3);
+  font-family: var(--font); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.btn-delete svg { transition: color 0.15s; }
+.btn-delete:hover {
+  background: var(--red-bg);
+  border-color: var(--red-border);
+  color: var(--red-text);
+}
+
+.confirm-inline {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-radius: 8px;
+  background: var(--red-bg); border: 1px solid var(--red-border);
+  animation: confirmSlideIn 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  white-space: nowrap;
+}
+@keyframes confirmSlideIn {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.confirm-inline-text {
+  font-size: 11px; font-weight: 600; color: var(--red-text);
+  padding: 0 2px;
+}
+
+.btn-confirm-yes {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 5px;
+  border: none; background: var(--red); color: #fff;
+  font-family: var(--font); font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: background 0.12s;
+}
+.btn-confirm-yes:hover { background: #dc2626; }
+
+.btn-confirm-no {
+  display: inline-flex; align-items: center;
+  padding: 3px 9px; border-radius: 5px;
+  border: 1px solid var(--red-border); background: transparent;
+  color: var(--red-text);
+  font-family: var(--font); font-size: 11px; font-weight: 500;
+  cursor: pointer; transition: all 0.12s;
+}
+.btn-confirm-no:hover { background: var(--red-border); }
+
+/* Ligne en cours de suppression */
+.row-deleting td { background: var(--red-bg) !important; transition: background 0.2s; }
+
+/* Animation de sortie */
+.row-exit {
+  opacity: 0;
+  transform: translateX(10px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}

@@ -91,8 +91,8 @@ export class AiService {
         if (res.status === 'done' || res.status === 'error') return false;
         if (pollCount >= this.MAX_POLLS) return false;
         return true;
-      }, true),  // ← inclut la dernière valeur
-      last(),    // ← prend seulement le dernier résultat
+      }, true), 
+      last(),    
       map(res => {
        if (res.status === 'error')   throw new Error('Job échoué côté serveur.');
       if (res.status === 'pending') throw new Error('Timeout — Ollama trop lent. Réessayez.');
@@ -151,7 +151,18 @@ export class AiService {
       recos:         [],
     };
   }
-
+  envoyerRapportIA(email: string, nom: string): Observable<any> {
+  return this.http.post<JobResponse>(
+    `${this.API}/rapport/email/start`,
+    { email, nom }
+  ).pipe(
+    switchMap(res => this.pollJob<any>(res.job_id, 'rapport/email')),
+    catchError(err => {
+      console.error('[AiService] Email rapport error:', err);
+      return throwError(() => err);
+    })
+  );
+}
   private fallbackBenchmark(): BenchmarkIA {
     return {
       benchmarks:   [],

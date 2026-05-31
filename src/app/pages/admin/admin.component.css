@@ -2199,3 +2199,418 @@
   font-size: 11px;
   font-weight: 700;
 }
+.modal--confirm {
+  max-width: 420px;
+}
+.kpi-card__hint {
+  font-size: 10px;
+  color: var(--text-2);
+  margin-top: 2px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* ══════════════════════════════════════════════════════════
+   ADDITIONS CSS — admin.component.css
+   À ajouter à la fin du fichier existant
+══════════════════════════════════════════════════════════ */
+
+/* ── Seuils — liste de progression ───────────────────────────────── */
+.seuil-progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.seuil-progress-item {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.seuil-progress-item:last-child { border-bottom: none; }
+.seuil-progress-item:hover { background: var(--surface-2); }
+.seuil-progress-item--depasse { background: var(--red-bg); }
+.seuil-progress-item--depasse:hover { background: #fce8e8; }
+
+.seuil-progress-item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.seuil-progress-item__info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.seuil-progress-item__icon {
+  font-size: 18px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+  flex-shrink: 0;
+}
+
+.seuil-progress-item__nom {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.seuil-progress-item__periode {
+  display: block;
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: var(--mono);
+}
+
+.seuil-progress-item__badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.seuil-progress-item__inactive {
+  padding: 8px 0;
+}
+
+.seuil-progress-item__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* ── Barre de progression seuil ──────────────────────────────────── */
+.seuil-bar {
+  margin-bottom: 6px;
+}
+
+.seuil-bar__track {
+  position: relative;
+  height: 10px;
+  background: var(--surface-3);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.seuil-bar__fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  min-width: 4px;
+}
+
+.seuil-bar__fill--green { background: linear-gradient(90deg, #22c55e, #86efac); }
+.seuil-bar__fill--amber { background: linear-gradient(90deg, #f59e0b, #fcd34d); }
+.seuil-bar__fill--red   { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+.seuil-bar__marker {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--text-3);
+  opacity: 0.4;
+}
+
+.seuil-bar__labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: var(--mono);
+}
+
+.seuil-bar__pct {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* ── Mini barre seuil (dans tableau) ─────────────────────────────── */
+.seuil-pct-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.seuil-mini-bar {
+  width: 60px;
+  height: 5px;
+  background: var(--surface-3);
+  border-radius: 99px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.seuil-mini-bar__fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.6s ease;
+}
+
+.seuil-pct-label {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* ── Toggle ON/OFF seuil ─────────────────────────────────────────── */
+.seuil-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border-2);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.seuil-toggle:hover { border-color: var(--accent-border); color: var(--accent); }
+.seuil-toggle--on {
+  background: var(--green-bg);
+  border-color: var(--green-border);
+  color: var(--green-text);
+}
+.seuil-toggle--on:hover {
+  background: var(--amber-bg);
+  border-color: var(--amber-border);
+  color: var(--amber-text);
+}
+
+/* ── Icône énergie dans tableau seuil ────────────────────────────── */
+.seuil-energie-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+/* ── Valeurs seuil tableau ───────────────────────────────────────── */
+.seuil-val {
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.seuil-conso {
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+/* ── Ligne dépassée (tableau) ────────────────────────────────────── */
+.seuil-row--depasse td {
+  background: var(--red-bg) !important;
+}
+.seuil-row--depasse td:first-child {
+  border-left: 3px solid var(--red);
+}
+
+/* ── Aperçu modal seuil ──────────────────────────────────────────── */
+.seuil-modal-preview {
+  margin: 12px 20px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.seuil-modal-preview__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.seuil-modal-preview__row strong {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* ── Form hint ───────────────────────────────────────────────────── */
+.form-hint {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+/* ── Form group inline (checkbox / toggle) ───────────────────────── */
+.form-group--inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* ── Toggle switch (checkbox) ────────────────────────────────────── */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch__slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: var(--surface-3);
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  transition: background 0.2s;
+}
+.switch__slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 3px;
+  top: 3px;
+  background: var(--text-3);
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+.switch input:checked + .switch__slider { background: var(--green-bg); border-color: var(--green-border); }
+.switch input:checked + .switch__slider::before { transform: translateX(18px); background: var(--green); }
+
+/* ── Chip amber (manquant) ───────────────────────────────────────── */
+.chip--yellow { background: #fef9c3; color: #713f12; border-color: #fde047; }
+
+/* ── Export item excel (correction) ─────────────────────────────── */
+.export-item--excel .export-item__dl {
+  display: inline-block;
+}
+
+/* ── Text warning ────────────────────────────────────────────────── */
+.text--warning { color: var(--amber); }
+
+/* ── Line chart legend ───────────────────────────────────────────── */
+.line-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 18px 4px;
+  font-size: 12px;
+  color: var(--text-2);
+  flex-wrap: wrap;
+}
+
+.line-chart-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.line-chart-legend__dash {
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.line-chart-legend__dash--dotted {
+  background: repeating-linear-gradient(
+    to right,
+    var(--amber) 0px,
+    var(--amber) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  background-color: transparent !important;
+}
+
+/* ── Chart stats row ─────────────────────────────────────────────── */
+.chart-stats-row {
+  display: flex;
+  gap: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.chart-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 14px;
+  border-right: 1px solid var(--border);
+}
+.chart-stat:last-child { border-right: none; }
+
+.chart-stat__label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-family: var(--mono);
+}
+
+.chart-stat__val {
+  font-size: 17px;
+  font-weight: 700;
+  font-family: var(--mono);
+  line-height: 1;
+}
+
+/* ── Modal large (modal--lg) ─────────────────────────────────────── */
+.modal--lg { max-width: 600px; }
+.modal__body { padding: 0 4px; }
+.form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+}
+
+/* ── Sidebar seuils nav item (à ajouter dans sidebar nav) ─────────── */
+/* Le lien vers Seuils est déjà dans le sidebar via navigate('seuils').
+   Ce bloc est documentaire — aucun CSS supplémentaire requis. */
+
+/* ── Responsive seuils ───────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .seuil-progress-item__header { flex-direction: column; align-items: flex-start; }
+  .chart-stats-row { flex-wrap: wrap; }
+  .chart-stat { min-width: 50%; border-bottom: 1px solid var(--border); }
+  .form-row-2 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .seuil-progress-item { padding: 12px 14px; }
+  .line-chart-legend { gap: 10px; }
+}

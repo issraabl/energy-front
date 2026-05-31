@@ -340,4 +340,32 @@ Fournis : 1. Analyse situation (2 phrases) 2. Risques (1-2 phrases) 3. Deux reco
 
     return this.ollamaChat(prompt);
   }
+
+  // ════════════════════════════════════════════
+  // EMAIL — Rapport IA
+  // ════════════════════════════════════════════
+
+  envoyerRapportIA(data: {
+    destinataireEmail:   string;
+    destinataireNom:     string;
+    sujet:               string;   // ← FIX: champ ajouté
+    resumeExecutif:      string;
+    anomaliesHtml:       string;
+    recommandationsHtml: string;
+    previsionHtml:       string;
+  }): Observable<any> {
+    return this.http.post(
+      `${this.BASE}/Email/rapport-ia`,   
+      {
+        DestinataireEmail:   data.destinataireEmail,
+        DestinataireNom:     data.destinataireNom,
+        Sujet:               data.sujet,             
+        ResumeExecutif:      data.resumeExecutif,
+        AnomaliesHtml:       data.anomaliesHtml,
+        RecommandationsHtml: data.recommandationsHtml,
+        PrevisionHtml:       data.previsionHtml,
+      },
+      { headers: this.getHeaders() }
+    );
+  }
 }

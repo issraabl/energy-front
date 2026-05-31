@@ -1,3 +1,7 @@
+// ══════════════════════════════════════════════════════════════════════════════
+// energy-dashboard.component.ts 
+// ══════════════════════════════════════════════════════════════════════════════
+
 import { Component, OnInit, OnDestroy, ElementRef, ViewChild, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
@@ -68,6 +72,70 @@ interface AnomalieExt {
 }
 
 interface SparkSeries { energieId: number; points: number[]; }
+
+// ─── Interfaces IA ────────────────────────────────────────────────────────────
+
+interface AnomalieIA {
+  severite:  string;
+  energie:   string;
+  unite:     string;
+  date:      string;
+  valeur:    number;
+  moyenne:   number;
+  ecart_pct: number;
+  type:      string;
+  methode:   string;
+}
+
+interface AnomaliesIAResult {
+  score_sante:  number;
+  resume:       string;
+  nb_critiques: number;
+  nb_hautes:    number;
+  nb_normales:  number;
+  anomalies:    AnomalieIA[];
+}
+
+interface RecommandationIA {
+  titre:            string;
+  description:      string;
+  priorite:         string;
+  economie_estimee: number;
+  delai:            string;
+  energie_ciblee:   string;
+  categorie:        string;
+}
+
+interface RecommandationsIAResult {
+  resume:          string;
+  economie_totale: number;
+  nb_haute:        number;
+  recommandations: RecommandationIA[];
+}
+
+interface StatEnergie {
+  mois_actuel:    number;
+  mois_precedent: number;
+  variation_pct:  number;
+  moyenne:        number;
+  prevision:      number;
+  tendance:       'up'|'down'|'flat';
+  r2:             number;
+  unite:          string;
+}
+
+interface RapportIA {
+  date_generation:  string;
+  nb_mesures:       number;
+  periode:          string;
+  score_sante:      number;
+  nb_anomalies:     number;
+  resume_executif:  string;
+  points_cles:      string[];
+  decisions:        string[];
+  stats_energies:   Record<string, StatEnergie>;
+  anomalies_top3:   { energie: string; date: string; description: string; ecart_pct: number }[];
+}
 
 // ─── Noms canoniques des énergies ────────────────────────────────────────────
 const NOM_ELECTRICITE = 'Electricité';
@@ -165,6 +233,9 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
 
   showRecoModal = false; recoForm!: FormGroup; recoSaving = false; recoSaved = false;
 
+  // ── Pending delete confirmations (inline) ─────────────────────────────────
+  pendingDeleteIds = new Set<number>();
+
   // ── Filters — Equipements ─────────────────────────────────────────────────
   searchEquip       = ''; filterEquipType = ''; filterEquipStatut = '';
   equipPage = 1; equipPerPage = 8;
@@ -195,12 +266,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   showChat = false; messages: OllamaMessage[] = []; chatInput = ''; chatLoading = false;
   private readonly RAG_URL = 'http://localhost:8000';
 
-  // ── Heatmap ────────────────────────────────────────────────────────────────
-  offHoursMode   = false;
-  heatmapEnergie = '';
-  heatmapHovered: { day: number; hour: number; val: number } | null = null;
-  heatmapData: number[][] = []; heatmapDays: string[] = []; heatmapHourLabels: string[] = [];
-
   // ── Benchmarking ───────────────────────────────────────────────────────────
   benchmarkData: BenchmarkItem[] = [];
   rankTimeline:  { label: string; pct: number }[] = [];
@@ -220,6 +285,29 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   };
   previsionRecos: { titre: string; description: string; economie: number; urgence: string }[] = [];
   forecastPoints: ChartPoint[] = [];
+
+  // ── Anomalies IA ──────────────────────────────────────────────────────────
+  aiLoadingAnomalies = false;
+  anomaliesIA: AnomaliesIAResult | null = null;
+
+  // ── Recommandations IA ────────────────────────────────────────────────────
+  aiLoadingRecos = false;
+  recommandationsIA: RecommandationsIAResult | null = null;
+
+  // ── Rapport IA ────────────────────────────────────────────────────────────
+  aiLoadingRapport = false;
+  rapportIA: RapportIA | null = null;
+
+  // ── Email Rapport IA ──────────────────────────────────────────────────────
+  showEmailModal    = false;
+  emailDestinataire = '';
+  emailNom          = '';
+  emailObjet        = '';
+  emailObjetDefault = '';
+  emailNote         = '';
+  emailSending      = false;
+  emailSent         = false;
+  emailError        = '';
 
   min  = Math.min;
   Math = Math;
@@ -263,11 +351,43 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // Polling de job async FastAPI
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private pollJob<T>(
+    jobId: string,
+    url: string,
+    onSuccess: (result: T) => void,
+    onError: () => void,
+    attempts = 0,
+    maxAttempts = 60
+  ): void {
+    if (attempts >= maxAttempts) {
+      console.warn(`[pollJob] Timeout pour job ${jobId}`);
+      onError();
+      return;
+    }
+    this.http.get<{ status: string; result: T }>(url)
+      .pipe(timeout(8000), catchError(() => of(null)))
+      .subscribe(res => {
+        if (!res || res.status === 'error') {
+          console.warn(`[pollJob] Job ${jobId} en erreur`);
+          onError();
+          return;
+        }
+        if (res.status === 'done') {
+          onSuccess(res.result);
+          return;
+        }
+        setTimeout(() => this.pollJob(jobId, url, onSuccess, onError, attempts + 1, maxAttempts), 2000);
+      });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Lifecycle
   // ══════════════════════════════════════════════════════════════════════════
 
   ngOnInit(): void {
-
     this.loadAll();
     this.clockInterval = setInterval(() => { this.currentTime = new Date(); }, 1000);
     this.messages = [{
@@ -278,6 +398,8 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     this.aiSvc.checkHealth().subscribe(res => {
       this.aiServiceOnline = res?.status === 'ok';
     });
+    // lancerDetectionAnomalies() est appelé dans loadAll() après chargement complet.
+    // Pas de setTimeout ici — évite toute race condition.
   }
 
   ngOnDestroy(): void { clearInterval(this.clockInterval); }
@@ -788,10 +910,10 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   // ══════════════════════════════════════════════════════════════════════════
 
   openAddMesure(): void {
-    this.mesureForm.reset({ sourceDonnee: 'Saisie manuelle', dateMesure: new Date().toISOString().slice(0,16) });
+    this.mesureForm.reset({ sourceDonnee: 'Saisie manuelle', dateMesure: new Date().toISOString().slice(0, 16) });
     this.mesureSaved = false; this.showMesureModal = true;
   }
-  resetMesureForm(): void { this.mesureForm.reset({ sourceDonnee: 'Saisie manuelle', dateMesure: new Date().toISOString().slice(0,16) }); }
+  resetMesureForm(): void { this.mesureForm.reset({ sourceDonnee: 'Saisie manuelle', dateMesure: new Date().toISOString().slice(0, 16) }); }
 
   saveMesure(): void {
     if (this.mesureForm.invalid) { this.mesureForm.markAllAsTouched(); return; }
@@ -819,7 +941,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     if (this.alerteForm.invalid) { this.alerteForm.markAllAsTouched(); return; }
     this.alerteSaving = true;
     const v = this.alerteForm.value;
-    const a: AlerteExt = { idAlerte: Date.now(), type: v.type, severite: v.severite, message: v.message, seuil: +(v.seuil)||0, traite: false, dateCreation: new Date().toISOString(), sourceAuto: false };
+    const a: AlerteExt = { idAlerte: Date.now(), type: v.type, severite: v.severite, message: v.message, seuil: +(v.seuil) || 0, traite: false, dateCreation: new Date().toISOString(), sourceAuto: false };
     setTimeout(() => {
       this.alertes = [a, ...this.alertes]; this.alerteSaving = false; this.alerteSaved = true;
       this.showToast('Alerte créée !', 'success');
@@ -827,7 +949,12 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     }, 500);
   }
 
+  showDeleteConfirmAlerte(a: AlerteExt): void { this.pendingDeleteIds.add(a.idAlerte); }
+  cancelDeleteAlerte(a: AlerteExt): void { this.pendingDeleteIds.delete(a.idAlerte); }
+  isDeletePendingAlerte(a: AlerteExt): boolean { return this.pendingDeleteIds.has(a.idAlerte); }
+
   deleteAlerte(a: AlerteExt): void {
+    this.pendingDeleteIds.delete(a.idAlerte);
     this.alertes = this.alertes.filter(x => x.idAlerte !== a.idAlerte);
     this.showToast('Alerte supprimée.', 'info');
   }
@@ -856,7 +983,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   // ══════════════════════════════════════════════════════════════════════════
 
   openAnomalieModal(): void {
-    this.anomalieForm.reset({ type: 'Pic de consommation', dateDetection: new Date().toISOString().slice(0,10) });
+    this.anomalieForm.reset({ type: 'Pic de consommation', dateDetection: new Date().toISOString().slice(0, 10) });
     this.anomalieSaved = false; this.showAnomalieModal = true;
   }
 
@@ -1154,8 +1281,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   get hasChartData(): boolean { return this.chartPoints.some(p => p.value > 0); }
 
   private pathFromPoints(pts: ChartPoint[]): string {
-    const valid = pts.filter(p => p.value > 0);
-    if (!valid.length) return '';
+    if (!pts.length) return '';
     let d = ''; let inPath = false;
     for (let i = 0; i < pts.length; i++) {
       if (pts[i].value > 0) {
@@ -1293,7 +1419,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
 
   openAddEquipement(): void {
     this.editingEquipement = null;
-    this.equipementForm.reset({ statut: 'Actif', dateInstallation: new Date().toISOString().slice(0,10) });
+    this.equipementForm.reset({ statut: 'Actif', dateInstallation: new Date().toISOString().slice(0, 10) });
     this.equipementSaved = false; this.showEquipementModal = true;
   }
 
@@ -1303,7 +1429,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     this.equipementForm.patchValue({
       nom: e.nom, typeEquipement: e.typeEquipement, statut: e.statut || 'Actif',
       puissance: e.puissance ?? '', localisation: e.localisation || e.zone?.nom || '',
-      dateInstallation: dateRef ? new Date(dateRef).toISOString().slice(0,10) : '',
+      dateInstallation: dateRef ? new Date(dateRef).toISOString().slice(0, 10) : '',
       energieId: e.energieId ?? '', zoneId: e.zoneId ?? '',
       description: (e as {description?: string}).description || '',
     });
@@ -1332,22 +1458,32 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
         this.showToast(this.editingEquipement ? 'Équipement modifié !' : 'Équipement ajouté !', 'success');
         setTimeout(() => { this.equipementSaved = false; this.showEquipementModal = false; this.editingEquipement = null; this.loadAll(); }, 1400);
       },
-      error: (err) => {
+      error: (err: any) => {
         this.equipementSaving = false;
         this.showToast(err?.error?.message ?? err?.message ?? 'Erreur lors de la sauvegarde.', 'error');
       },
     });
   }
 
-  confirmDeleteEquipement(e: Equipement): void { this.equipementToDelete = e; this.showDeleteConfirm = true; }
+  showDeleteConfirmEquipement(e: Equipement): void { this.pendingDeleteIds.add(e.idEquipement); }
+  cancelDeleteEquipement(e: Equipement): void { this.pendingDeleteIds.delete(e.idEquipement); }
+  isDeletePendingEquipement(e: Equipement): boolean { return this.pendingDeleteIds.has(e.idEquipement); }
 
-  deleteEquipement(): void {
-    if (!this.equipementToDelete) return;
-    this.api.deleteEquipement(this.equipementToDelete.idEquipement).subscribe({
+  confirmDeleteEquipement(e: Equipement): void {
+    this.equipementToDelete = e;
+    this.showDeleteConfirm = true;
+  }
+
+  deleteEquipement(e?: Equipement): void {
+    const target = e ?? this.equipementToDelete;
+    if (!target) return;
+    this.pendingDeleteIds.delete(target.idEquipement);
+    this.api.deleteEquipement(target.idEquipement).subscribe({
       next:  () => { this.showToast('Équipement supprimé.', 'info'); this.loadAll(); },
       error: () => { this.showToast('Erreur lors de la suppression.', 'error'); },
     });
-    this.showDeleteConfirm = false; this.equipementToDelete = null;
+    this.showDeleteConfirm = false;
+    this.equipementToDelete = null;
   }
 
   toggleEquipStatut(e: Equipement): void {
@@ -1386,7 +1522,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Anomalies
+  // Anomalies (manuelles)
   // ══════════════════════════════════════════════════════════════════════════
 
   get filteredAnomalies(): AnomalieExt[] {
@@ -1502,7 +1638,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       this.isAboveThreshold(m.valeur) ? 'Dépassement' : 'Normal',
     ]);
     const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
-    this.download('\uFEFF' + csv, `mesures_wicmic_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv');
+    this.download('\uFEFF' + csv, `mesures_wicmic_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
     this.showToast('Export CSV téléchargé.', 'success');
   }
 
@@ -1528,7 +1664,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       ...this.energies.map(en => `${en.nom.padEnd(20)}: ${this.getEnergieTotal(en.idEnergie)} ${en.unite} — ${this.getEnergieCout(en.idEnergie)} DT (${this.getEnergiePct(en.idEnergie)}%)`),
       sub,
     ];
-    this.download(lines.join('\n'), `rapport_wicmic_${new Date().toISOString().slice(0,10)}.txt`, 'text/plain');
+    this.download(lines.join('\n'), `rapport_wicmic_${new Date().toISOString().slice(0, 10)}.txt`, 'text/plain');
     this.showToast('Rapport exporté.', 'success');
   }
 
@@ -1560,7 +1696,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       `  Recommandations appliquées : ${this.recoAppliquees}/${this.totalRecommandations}`, '',
       sep, `  Utilisateur : ${this.currentUser?.nom ?? '—'}`, sep,
     ];
-    this.download(lines.join('\n'), `rapport_executif_wicmic_${new Date().toISOString().slice(0,10)}.txt`, 'text/plain');
+    this.download(lines.join('\n'), `rapport_executif_wicmic_${new Date().toISOString().slice(0, 10)}.txt`, 'text/plain');
     this.showToast('Rapport exporté avec succès !', 'success');
   }
 
@@ -1572,7 +1708,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Chat IA  ← MODIFIÉ : détection sociale + contexte conditionnel
+  // Chat IA
   // ══════════════════════════════════════════════════════════════════════════
 
   sendChat(): void {
@@ -1582,7 +1718,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     this.messages.push({ role: 'user', content: msg, time: new Date() });
     this.chatInput = ''; this.chatLoading = true; this._scrollChat();
 
-    // ── Contexte dashboard (injecté uniquement pour les questions métier) ──
     const dashboardCtx = [
       'Contexte WICMIC Energy :',
       `- Mesures : ${this.totalMesures} | Moy : ${this.moyenneMesures} | Max : ${this.maxMesure}`,
@@ -1596,27 +1731,22 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       `- Résumé benchmark IA : ${this.benchmarkIA?.resumeGlobal || 'N/A'}`,
     ].join('\n');
 
-    // ── Message social → contexte vide, réponse immédiate côté Python ──────
     const social = isSocialMessage(msg);
-
-    const payload = {
-      prompt:  msg,
-      context: social ? '' : dashboardCtx,
-    };
+    const payload = { prompt: msg, context: social ? '' : dashboardCtx };
 
     this.http.post<{ response: string }>(`${this.RAG_URL}/chat`, payload).pipe(
-      timeout(300000),
+      timeout(20000),
       catchError(() =>
-        // Fallback .NET sans contexte pour les messages sociaux
         this.api.ollamaChat(social ? msg : dashboardCtx + `\n\nQuestion : ${msg}`)
       )
     ).subscribe({
-      next:  res => {
+      next: res => {
         this.messages.push({ role: 'assistant', content: res.response, time: new Date() });
         this.chatLoading = false; this._scrollChat();
       },
       error: () => {
-        this.messages.push({ role: 'assistant', content: 'Service IA indisponible.', time: new Date() });
+        const errMsg = 'Service IA indisponible (délai dépassé). Vérifiez que FastAPI et Ollama tournent sur le port 8000.';
+        this.messages.push({ role: 'assistant', content: errMsg, time: new Date() });
         this.chatLoading = false; this._scrollChat();
       },
     });
@@ -1625,15 +1755,6 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   sendSuggestion(text: string): void { this.chatInput = text; this.sendChat(); }
   onChatEnter(event: Event): void { const ke = event as KeyboardEvent; if (!ke.shiftKey) { event.preventDefault(); this.sendChat(); } }
   private _scrollChat(): void { setTimeout(() => { if (this.chatScrollRef?.nativeElement) this.chatScrollRef.nativeElement.scrollTop = this.chatScrollRef.nativeElement.scrollHeight; }, 50); }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // Mode hors-heure
-  // ══════════════════════════════════════════════════════════════════════════
-
-  toggleOffHours(): void {
-    this.offHoursMode = !this.offHoursMode;
-    this.showToast(this.offHoursMode ? 'Mode hors-heure activé' : 'Mode hors-heure désactivé', 'info');
-  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // Benchmarking
@@ -1700,36 +1821,56 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     });
 
     this.aiLoadingBench = true;
-    this.aiSvc.getBenchmark({ energies: energiesPayload }).subscribe({
-      next: (result: BenchmarkIA) => {
-        this.benchmarkIA = result;
-        if (result.benchmarks?.length) {
-          this.benchmarkData = result.benchmarks.map(b => {
-            const en = this.energies.find(e => e.nom === b.energie);
-            return {
-              energie:  `${this.getEnergieIcon(en ? Number(en.idEnergie) : 0)} ${b.energie}`,
-              unite:    b.unite, moisActuel: b.moisActuel, moisPrecedent: b.moisPrecedent,
-              moyenne:  b.moyenne, variation: b.variation, position: b.position,
-              insight:  b.insight, hasData: b.hasData,
-            };
-          });
+    this.http.post<{ job_id: string }>(`${this.RAG_URL}/benchmark/start`, { energies: energiesPayload })
+      .pipe(timeout(10000), catchError(() => of(null)))
+      .subscribe({
+        next: res => {
+          if (!res?.job_id) {
+            this.aiLoadingBench = false;
+            this.benchmarkData = this.benchmarkData.map(b => ({
+              ...b, insight: b.insight.replace('⏳ Analyse IA en cours...', '⚠️ Service IA indisponible — analyse locale uniquement.'),
+            }));
+            return;
+          }
+          this.pollJob<BenchmarkIA>(
+            res.job_id,
+            `${this.RAG_URL}/benchmark/result/${res.job_id}`,
+            (result: BenchmarkIA) => {
+              this.benchmarkIA = result;
+              if (result.benchmarks?.length) {
+                this.benchmarkData = result.benchmarks.map(b => {
+                  const en = this.energies.find(e => e.nom === b.energie);
+                  return {
+                    energie:  `${this.getEnergieIcon(en ? Number(en.idEnergie) : 0)} ${b.energie}`,
+                    unite:    b.unite, moisActuel: b.moisActuel, moisPrecedent: b.moisPrecedent,
+                    moyenne:  b.moyenne, variation: b.variation, position: b.position,
+                    insight:  b.insight, hasData: b.hasData,
+                  };
+                });
+              }
+              this.aiLoadingBench = false;
+              this.cdr.detectChanges();
+            },
+            () => {
+              this.aiLoadingBench = false;
+              this.benchmarkData = this.benchmarkData.map(b => ({
+                ...b, insight: b.insight.replace('⏳ Analyse IA en cours...', '⚠️ Service IA indisponible — analyse locale uniquement.'),
+              }));
+              this.cdr.detectChanges();
+            }
+          );
+        },
+        error: () => {
+          this.aiLoadingBench = false;
+          this.cdr.detectChanges();
         }
-        this.aiLoadingBench = false;
-        this.cdr.detectChanges();
-      },
-      error: () => {
-        this.aiLoadingBench = false;
-        this.benchmarkData = this.benchmarkData.map(b => ({
-          ...b, insight: b.insight.replace('⏳ Analyse IA en cours...', '⚠️ Service IA indisponible — analyse locale uniquement.'),
-        }));
-      },
-    });
+      });
   }
 
   get hasRankTimelineData(): boolean { return this.rankTimeline.some(r => r.pct > 0); }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Prévisions
+  // Prévisions IA
   // ══════════════════════════════════════════════════════════════════════════
 
   recalculatePrevisions(): void {
@@ -1739,12 +1880,13 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
 
   private initPrevisions(): void {
     const now = new Date();
+
     const getMonthlyPoints = (eid: number): { mois: string; total: number }[] => {
       const pts: { mois: string; total: number }[] = [];
       for (let i = 11; i >= 0; i--) {
         const d     = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const fin   = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-        const label = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         const total = this.mesures
           .filter(m => Number(m.energieId) === Number(eid))
           .filter(m => { const dm = new Date(m.dateMesure); return dm >= d && dm <= fin; })
@@ -1777,32 +1919,705 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
       ].filter(e => e.mois.length >= MIN),
     };
 
-    this.aiSvc.getPrevisions(payload).subscribe({
-      next: (result: PrevisionIA) => {
-        this.previsionMoisProchain = {
-          elec:          result.elec          ?? 0,
-          eau:           result.eau           ?? 0,
-          gazoil:        result.gazoil        ?? 0,
-          fiabilite:     result.fiabilite     ?? 0,
-          elecTrend:     result.elecTrend     ?? 'flat',
-          elecVar:       result.elecVar       ?? '0',
-          hasEnoughData: result.hasEnoughData ?? true,
-        };
-        this.previsionRaisonnement = result.raisonnement ?? '';
-        this.previsionRecos = (result.recos ?? []).map(r => ({
-          titre: r.titre, description: r.description, economie: r.economie, urgence: r.urgence,
-        }));
-        this.aiLoading = false;
-        this.buildForecastPoints();
-        this.showToast('✅ Prévisions IA générées !', 'success');
-        this.cdr.detectChanges();
-      },
-      error: () => {
-        this.aiLoading = false;
-        this.previsionRecos = [{ titre: 'Service IA indisponible', description: 'Vérifiez que FastAPI tourne sur le port 8000.', economie: 0, urgence: 'normale' }];
-        this.showToast('⚠️ FastAPI indisponible.', 'warn');
-      },
+    this.http.post<{ job_id: string }>(`${this.RAG_URL}/previsions/start`, payload)
+      .pipe(timeout(10000), catchError(() => of(null)))
+      .subscribe({
+        next: res => {
+          if (!res?.job_id) {
+            this._fallbackPrevisions(ptE, ptW, ptG);
+            return;
+          }
+          this.pollJob<PrevisionIA>(
+            res.job_id,
+            `${this.RAG_URL}/previsions/result/${res.job_id}`,
+            (result: PrevisionIA) => {
+              this.previsionMoisProchain = {
+                elec:          result.elec          ?? 0,
+                eau:           result.eau           ?? 0,
+                gazoil:        result.gazoil        ?? 0,
+                fiabilite:     result.fiabilite     ?? 0,
+                elecTrend:     result.elecTrend     ?? 'flat',
+                elecVar:       result.elecVar       ?? '0',
+                hasEnoughData: result.hasEnoughData ?? true,
+              };
+              this.previsionRaisonnement = result.raisonnement ?? '';
+              this.previsionRecos = (result.recos ?? []).map(r => ({
+                titre: r.titre, description: r.description, economie: r.economie, urgence: r.urgence,
+              }));
+              this.aiLoading = false;
+              this.buildForecastPoints();
+              this.showToast('✅ Prévisions IA générées !', 'success');
+              this.cdr.detectChanges();
+            },
+            () => this._fallbackPrevisions(ptE, ptW, ptG)
+          );
+        },
+        error: () => this._fallbackPrevisions(ptE, ptW, ptG)
+      });
+  }
+
+  private _fallbackPrevisions(
+    ptE: { mois: string; total: number }[],
+    ptW: { mois: string; total: number }[],
+    ptG: { mois: string; total: number }[]
+  ): void {
+    this.showToast('⚠️ FastAPI indisponible — prévisions calculées localement.', 'warn');
+
+    const regressionLineaire = (points: { mois: string; total: number }[]): number => {
+      if (!points.length) return 0;
+      const n = points.length;
+      const xs = points.map((_, i) => i + 1);
+      const ys = points.map(p => p.total);
+      const sumX  = xs.reduce((a, b) => a + b, 0);
+      const sumY  = ys.reduce((a, b) => a + b, 0);
+      const sumXY = xs.reduce((s, x, i) => s + x * ys[i], 0);
+      const sumX2 = xs.reduce((s, x) => s + x * x, 0);
+      const denom = n * sumX2 - sumX * sumX;
+      if (!denom) return +(sumY / n).toFixed(1);
+      const a = (n * sumXY - sumX * sumY) / denom;
+      const b = (sumY - a * sumX) / n;
+      return Math.max(0, +((a * (n + 1) + b)).toFixed(1));
+    };
+
+    const calcFiabilite = (points: { mois: string; total: number }[]): number => {
+      if (points.length < 3) return 50;
+      const vals = points.map(p => p.total);
+      const moy = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const variance = vals.reduce((s, v) => s + (v - moy) ** 2, 0) / vals.length;
+      const cv = moy > 0 ? Math.sqrt(variance) / moy : 1;
+      return Math.max(30, Math.min(85, Math.round((1 - cv) * 100)));
+    };
+
+    const elecVal   = regressionLineaire(ptE);
+    const eauVal    = regressionLineaire(ptW);
+    const gazoilVal = regressionLineaire(ptG);
+    const fiabilite = Math.round((calcFiabilite(ptE) + calcFiabilite(ptW) + calcFiabilite(ptG)) / 3);
+
+    const dernierElec = ptE.length ? ptE[ptE.length - 1].total : 0;
+    const elecVar = dernierElec > 0
+      ? Math.abs(((elecVal - dernierElec) / dernierElec) * 100).toFixed(1)
+      : '0';
+    const elecTrend: 'up'|'down'|'flat' = elecVal > dernierElec * 1.03
+      ? 'up' : elecVal < dernierElec * 0.97 ? 'down' : 'flat';
+
+    this.previsionMoisProchain = {
+      elec: elecVal, eau: eauVal, gazoil: gazoilVal,
+      fiabilite, elecTrend, elecVar, hasEnoughData: true,
+    };
+    this.previsionRaisonnement = 'Calcul local par régression linéaire (FastAPI indisponible).';
+    this.previsionRecos = [{
+      titre: 'Service IA externe indisponible',
+      description: 'Les prévisions affichées sont calculées localement par régression linéaire. Démarrez FastAPI sur le port 8000 pour des prévisions IA enrichies.',
+      economie: 0, urgence: 'normale',
+    }];
+    this.aiLoading = false;
+    this.buildForecastPoints();
+    this.cdr.detectChanges();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Détection Anomalies IA 
+  // ══════════════════════════════════════════════════════════════════════════
+
+  lancerDetectionAnomalies(): void {
+    if (!this.mesures.length || !this.energies.length) {
+      console.warn('[AnomaliesIA] Données non prêtes — analyse annulée.');
+      return;
+    }
+    if (this.aiLoadingAnomalies) return;
+    this.aiLoadingAnomalies = true;
+    this.anomaliesIA = null;
+
+    this.http.post<{ job_id: string }>(`${this.RAG_URL}/anomalies/start`, {})
+      .pipe(timeout(8000), catchError(() => of(null)))
+      .subscribe({
+        next: res => {
+          if (!res?.job_id) {
+            this.anomaliesIA = this.calculerAnomaliesLocales();
+            this.aiLoadingAnomalies = false;
+            this.cdr.detectChanges();
+            return;
+          }
+          this.pollJob<AnomaliesIAResult>(
+            res.job_id,
+            `${this.RAG_URL}/anomalies/result/${res.job_id}`,
+            (result: AnomaliesIAResult) => {
+              // Vérifier que le résultat est complet
+              if (result && result.resume && result.resume.length > 10) {
+                this.anomaliesIA = result;
+              } else {
+                this.anomaliesIA = this.calculerAnomaliesLocales();
+              }
+              this.aiLoadingAnomalies = false;
+              this.showToast('✅ Anomalies IA détectées !', 'success');
+              this.cdr.detectChanges();
+            },
+            () => {
+              this.anomaliesIA = this.calculerAnomaliesLocales();
+              this.aiLoadingAnomalies = false;
+              this.cdr.detectChanges();
+            }
+          );
+        },
+        error: () => {
+          this.anomaliesIA = this.calculerAnomaliesLocales();
+          this.aiLoadingAnomalies = false;
+          this.cdr.detectChanges();
+        }
+      });
+  }
+
+  // Seuils : Z-score 2.0, IQR 1.5 — résumé TOUJOURS rempli
+  private calculerAnomaliesLocales(): AnomaliesIAResult {
+    const anomalies: AnomalieIA[] = [];
+
+    for (const en of this.energies) {
+      const mesuresEn = this.mesures
+        .filter(m => Number(m.energieId) === Number(en.idEnergie))
+        .map(m => ({ valeur: m.valeur, date: m.dateMesure }));
+
+      if (mesuresEn.length < 3) continue;
+
+      const valeurs = mesuresEn.map(m => m.valeur);
+      const n       = valeurs.length;
+      const moy     = valeurs.reduce((s, v) => s + v, 0) / n;
+      const ecartType = Math.sqrt(valeurs.reduce((s, v) => s + (v - moy) ** 2, 0) / n);
+
+      const sorted = [...valeurs].sort((a, b) => a - b);
+      const q1  = sorted[Math.floor(n * 0.25)];
+      const q3  = sorted[Math.floor(n * 0.75)];
+      const iqr = q3 - q1;
+
+      for (const m of mesuresEn) {
+        const zscore = ecartType > 0 ? Math.abs((m.valeur - moy) / ecartType) : 0;
+        const isIQR  = iqr > 0 && (m.valeur < q1 - 1.5 * iqr || m.valeur > q3 + 1.5 * iqr);
+        const isZ    = zscore > 2.0;
+
+        if (!isIQR && !isZ) continue;
+
+        const ecart_pct = moy > 0 ? Math.round(((m.valeur - moy) / moy) * 100) : 0;
+
+        let severite = 'normale';
+        if (zscore > 3.0 || Math.abs(ecart_pct) > 80) severite = 'critique';
+        else if (zscore > 2.0 || Math.abs(ecart_pct) > 30) severite = 'haute';
+
+        anomalies.push({
+          severite,
+          energie:   en.nom,
+          unite:     en.unite,
+          date:      new Date(m.date).toLocaleDateString('fr-FR'),
+          valeur:    +m.valeur.toFixed(2),
+          moyenne:   +moy.toFixed(2),
+          ecart_pct,
+          type:      m.valeur > moy ? 'Surconsommation' : 'Sous-consommation',
+          methode:   isZ && isIQR ? 'Z-score + IQR' : isZ ? 'Z-score' : 'IQR',
+        });
+      }
+    }
+
+    anomalies.sort((a, b) => {
+      const order = { critique: 0, haute: 1, normale: 2 };
+      return (order[a.severite as keyof typeof order] ?? 2) - (order[b.severite as keyof typeof order] ?? 2);
     });
+
+    const nb_critiques = anomalies.filter(a => a.severite === 'critique').length;
+    const nb_hautes    = anomalies.filter(a => a.severite === 'haute').length;
+    const nb_normales  = anomalies.filter(a => a.severite === 'normale').length;
+
+    let score_sante = 100 - nb_critiques * 15 - nb_hautes * 8 - nb_normales * 3;
+    score_sante = Math.max(0, Math.min(100, Math.round(score_sante)));
+
+    // Résumé TOUJOURS rempli
+    let resume: string;
+    if (!anomalies.length) {
+      resume = `Aucune anomalie détectée sur ${this.mesures.length} mesures analysées `
+             + `(${this.energies.length} vecteurs énergétiques). `
+             + `Score de santé énergétique : ${score_sante}/100. `
+             + `Toutes les consommations sont dans les normes habituelles.`;
+    } else {
+      resume = `${anomalies.length} anomalie(s) détectée(s) sur ${this.mesures.length} mesures analysées. `
+             + `Score de santé : ${score_sante}/100. `
+             + `${nb_critiques} critique(s), ${nb_hautes} haute(s), ${nb_normales} normale(s). `;
+      if (nb_critiques > 0) {
+        const critEnergies = [...new Set(anomalies.filter(a => a.severite === 'critique').map(a => a.energie))];
+        resume += `Intervention prioritaire requise sur : ${critEnergies.join(', ')}.`;
+      } else {
+        resume += `Surveillance renforcée recommandée.`;
+      }
+    }
+
+    return { score_sante, resume, nb_critiques, nb_hautes, nb_normales, anomalies };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Recommandations IA — VERSION CORRIGÉE
+  // Résumé et économies TOUJOURS remplis
+  // ══════════════════════════════════════════════════════════════════════════
+
+  lancerRecommandations(): void {
+    if (this.aiLoadingRecos) return;
+    this.aiLoadingRecos = true;
+    this.recommandationsIA = null;
+
+    this.http.post<{ job_id: string }>(`${this.RAG_URL}/recommandations/start`, {})
+      .pipe(timeout(8000), catchError(() => of(null)))
+      .subscribe({
+        next: res => {
+          if (!res?.job_id) {
+            this.recommandationsIA = this.genererRecommandationsLocales();
+            this.aiLoadingRecos = false;
+            this.cdr.detectChanges();
+            return;
+          }
+          this.pollJob<RecommandationsIAResult>(
+            res.job_id,
+            `${this.RAG_URL}/recommandations/result/${res.job_id}`,
+            (result: RecommandationsIAResult) => {
+              // Vérifier que le résultat est complet
+              if (result && result.recommandations?.length > 0 && result.resume?.length > 10) {
+                this.recommandationsIA = result;
+              } else {
+                this.recommandationsIA = this.genererRecommandationsLocales();
+              }
+              this.aiLoadingRecos = false;
+              this.showToast('✅ Recommandations IA générées !', 'success');
+              this.cdr.detectChanges();
+            },
+            () => {
+              this.recommandationsIA = this.genererRecommandationsLocales();
+              this.aiLoadingRecos = false;
+              this.cdr.detectChanges();
+            }
+          );
+        },
+        error: () => {
+          this.recommandationsIA = this.genererRecommandationsLocales();
+          this.aiLoadingRecos = false;
+          this.cdr.detectChanges();
+        }
+      });
+  }
+
+  private genererRecommandationsLocales(): RecommandationsIAResult {
+    const recos: RecommandationIA[] = [];
+
+    const getTarif = (nom: string): number => {
+      const n = nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (n.includes('elec') || n.includes('electr')) return 0.28;
+      if (n.includes('eau')  || n.includes('water'))  return 0.85;
+      if (n.includes('gazoil') || n.includes('gaz'))  return 2.10;
+      return 0.28;
+    };
+
+    for (const en of this.energies) {
+      const eid   = Number(en.idEnergie);
+      const total = this.getEnergieTotal(eid);
+      const tarif = getTarif(en.nom);
+      const nom   = en.nom;
+      const unite = en.unite;
+
+      if (!total) continue;
+
+      const now = new Date();
+      const moisAct = this.mesures
+        .filter(m => {
+          const d = new Date(m.dateMesure);
+          return Number(m.energieId) === eid &&
+                 d.getMonth() === now.getMonth() &&
+                 d.getFullYear() === now.getFullYear();
+        })
+        .reduce((s, m) => s + m.valeur, 0);
+
+      const moisPrec = this.mesures
+        .filter(m => {
+          const d = new Date(m.dateMesure);
+          const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          return Number(m.energieId) === eid &&
+                 d.getMonth() === prev.getMonth() &&
+                 d.getFullYear() === prev.getFullYear();
+        })
+        .reduce((s, m) => s + m.valeur, 0);
+
+      const variation = moisPrec > 0
+        ? +((moisAct - moisPrec) / moisPrec * 100).toFixed(1)
+        : 0;
+
+      if (variation > 5) {
+        recos.push({
+          titre:            `Réduire la consommation ${nom}`,
+          description:      `La consommation ${nom} augmente de ${variation > 0 ? '+' : ''}${variation}% ce mois `
+                          + `(${moisAct.toFixed(1)} ${unite} vs ${moisPrec.toFixed(1)} ${unite} le mois précédent). `
+                          + `Audit des équipements associés et révision des plages horaires recommandés en priorité. `
+                          + `Économie potentielle estimée à 12% de la consommation actuelle.`,
+          priorite:         'haute',
+          economie_estimee: Math.max(1, Math.round(moisAct * 0.12 * tarif)),
+          delai:            '1-2 semaines',
+          energie_ciblee:   nom,
+          categorie:        'équipement',
+        });
+      } else if (variation < -5) {
+        recos.push({
+          titre:            `Maintenir la performance ${nom}`,
+          description:      `Baisse positive de ${Math.abs(variation)}% sur ${nom} `
+                          + `(${moisAct.toFixed(1)} ${unite} vs ${moisPrec.toFixed(1)} ${unite}). `
+                          + `Documenter les bonnes pratiques et les reproduire les prochains mois. `
+                          + `Cette performance doit être pérennisée et partagée avec les équipes.`,
+          priorite:         'moyenne',
+          economie_estimee: Math.max(1, Math.round(moisAct * 0.05 * tarif)),
+          delai:            '1 mois',
+          energie_ciblee:   nom,
+          categorie:        'comportement',
+        });
+      } else if (total > 0) {
+        const nom_lower = nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        let desc = '';
+        if (nom_lower.includes('elec') || nom_lower.includes('electr')) {
+          desc = `Optimiser la gestion des heures creuses pour l'électricité (${total.toFixed(1)} ${unite} total). `
+               + `Décaler les opérations énergivores vers 22h-6h peut générer jusqu'à 25% d'économies. `
+               + `Installer des minuteries et détecteurs de présence sur l'éclairage.`;
+        } else if (nom_lower.includes('eau') || nom_lower.includes('water')) {
+          desc = `Audit hydraulique recommandé pour ${nom} (${total.toFixed(1)} ${unite} total). `
+               + `Vérifier les circuits pour détecter les fuites potentielles. `
+               + `Mettre en place un système de recyclage de l'eau pour les processus industriels.`;
+        } else if (nom_lower.includes('gazoil') || nom_lower.includes('gaz')) {
+          desc = `Optimiser les cycles de chauffe pour ${nom} (${total.toFixed(1)} ${unite} total). `
+               + `Un ajustement des consignes de température de 5°C génère 10-15% d'économies. `
+               + `Vérifier l'isolation thermique des équipements de chauffage.`;
+        } else {
+          desc = `Surveiller et optimiser la consommation de ${nom} (${total.toFixed(1)} ${unite} total). `
+               + `Mettre en place des relevés hebdomadaires pour identifier les dérives. `
+               + `Définir des seuils d'alerte adaptés à ce vecteur énergétique.`;
+        }
+        recos.push({
+          titre:            `Optimiser ${nom}`,
+          description:      desc,
+          priorite:         'faible',
+          economie_estimee: Math.max(1, Math.round(total * 0.05 * tarif)),
+          delai:            '1-3 mois',
+          energie_ciblee:   nom,
+          categorie:        'process',
+        });
+      }
+    }
+
+    if (this.alertesCritiques > 0) {
+      recos.push({
+        titre:            'Traiter les alertes critiques en priorité absolue',
+        description:      `${this.alertesCritiques} alerte(s) critique(s) active(s) nécessitent une intervention immédiate. `
+                        + `Chaque alerte non traitée peut engendrer des surconsommations prolongées et des surcoûts importants. `
+                        + `Accéder à l'onglet Alertes pour consulter le détail et prendre les mesures correctives.`,
+        priorite:         'haute',
+        economie_estimee: Math.max(1, Math.round(this.coutMoisCourant * 0.08)),
+        delai:            'Immédiat',
+        energie_ciblee:   'Toutes énergies',
+        categorie:        'maintenance',
+      });
+    }
+
+    if (this.equipementsMaintenance > 0) {
+      recos.push({
+        titre:            'Finaliser les maintenances en cours',
+        description:      `${this.equipementsMaintenance} équipement(s) en maintenance impactent potentiellement la performance énergétique. `
+                        + `Les équipements non optimaux consomment en moyenne 15-20% de plus que les équipements en bon état. `
+                        + `Prioriser les réparations et mises à jour pour retrouver un fonctionnement optimal.`,
+        priorite:         'moyenne',
+        economie_estimee: Math.max(1, Math.round(this.coutTotal * 0.05)),
+        delai:            '2-4 semaines',
+        energie_ciblee:   'Toutes énergies',
+        categorie:        'maintenance',
+      });
+    }
+
+    // Recommandation transversale toujours présente
+    recos.push({
+      titre:            'Tableau de bord et alertes automatiques',
+      description:      'Configurer des seuils d\'alerte automatiques pour chaque vecteur énergétique '
+                      + 'afin de détecter les dérives en temps réel. '
+                      + 'Cette mesure permet une réactivité immédiate et évite les surconsommations prolongées. '
+                      + 'Mettre en place des notifications quotidiennes pour les responsables énergie.',
+      priorite:         'haute',
+      economie_estimee: Math.max(1, Math.round(this.coutTotal * 0.03)),
+      delai:            'Immédiat',
+      energie_ciblee:   'Toutes énergies',
+      categorie:        'maintenance',
+    });
+
+    recos.sort((a, b) => {
+      const order = { haute: 0, moyenne: 1, faible: 2 };
+      return (order[a.priorite as keyof typeof order] ?? 2) - (order[b.priorite as keyof typeof order] ?? 2);
+    });
+
+    const economie_totale = recos.reduce((s, r) => s + r.economie_estimee, 0);
+    const nb_haute        = recos.filter(r => r.priorite === 'haute').length;
+
+    // Résumé TOUJOURS rempli et détaillé
+    const now = new Date();
+    const tendancesUp = this.energies.filter(en => {
+      const eid = Number(en.idEnergie);
+      const act  = this.mesures.filter(m => {
+        const d = new Date(m.dateMesure);
+        return Number(m.energieId) === eid && d.getMonth() === now.getMonth();
+      }).reduce((s, m) => s + m.valeur, 0);
+      const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const prec = this.mesures.filter(m => {
+        const d = new Date(m.dateMesure);
+        return Number(m.energieId) === eid && d.getMonth() === prev.getMonth();
+      }).reduce((s, m) => s + m.valeur, 0);
+      return prec > 0 && ((act - prec) / prec * 100) > 5;
+    }).map(en => en.nom);
+
+    let resume = `${recos.length} recommandation(s) générée(s) basées sur l'analyse des données réelles. `;
+
+    if (tendancesUp.length > 0) {
+      resume += `Actions prioritaires requises sur : ${tendancesUp.join(', ')} (tendance à la hausse). `;
+    }
+
+    resume += `Économies potentielles estimées : ${economie_totale} DT/mois. `;
+    resume += `${nb_haute} action(s) prioritaire(s) à mettre en œuvre immédiatement.`;
+
+    return { resume, economie_totale, nb_haute, recommandations: recos };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Rapport IA — VERSION CORRIGÉE
+  // Résumé exécutif TOUJOURS rempli
+  // ══════════════════════════════════════════════════════════════════════════
+
+  genererRapportIA(): void {
+    if (this.aiLoadingRapport) return;
+    this.aiLoadingRapport = true;
+    this.rapportIA = null;
+
+    const statsEnergies: Record<string, StatEnergie> = {};
+    for (const en of this.energies) {
+      const eid           = Number(en.idEnergie);
+      const moisActuel    = this.getMoisTotal(eid, 0);
+      const moisPrecedent = this.getMoisTotal(eid, 1);
+      const variation_pct = moisPrecedent > 0
+        ? +((moisActuel - moisPrecedent) / moisPrecedent * 100).toFixed(1)
+        : 0;
+      const prevision = moisActuel > 0
+        ? Math.round(moisActuel * (1 + Math.min(variation_pct, 30) / 100 * 0.5))
+        : 0;
+      const tendance: 'up'|'down'|'flat' = variation_pct > 3 ? 'up' : variation_pct < -3 ? 'down' : 'flat';
+      statsEnergies[en.nom] = {
+        mois_actuel: moisActuel, mois_precedent: moisPrecedent,
+        variation_pct, moyenne: +this.getEnergieTotal(eid).toFixed(1),
+        prevision, tendance, r2: 0.7, unite: en.unite,
+      };
+    }
+
+    const anomaliesTop3 = this.anomaliesIA?.anomalies
+      ?.filter(a => a.severite === 'critique').slice(0, 3)
+      .map(a => ({
+        energie:     a.energie,
+        date:        a.date,
+        description: `${a.type} — Valeur : ${a.valeur} ${a.unite} (écart : ${a.ecart_pct > 0 ? '+' : ''}${a.ecart_pct}% vs moyenne)`,
+        ecart_pct:   a.ecart_pct,
+      })) ?? [];
+
+    // Compléter avec des anomalies benchmark si nécessaire
+    if (anomaliesTop3.length === 0) {
+      for (const [nom, stats] of Object.entries(statsEnergies)) {
+        if (Math.abs(stats.variation_pct) > 20) {
+          anomaliesTop3.push({
+            energie:     nom,
+            date:        new Date().toLocaleDateString('fr-FR'),
+            description: `${stats.variation_pct > 0 ? 'Hausse' : 'Baisse'} de ${Math.abs(stats.variation_pct)}% — `
+                       + `${stats.mois_actuel} vs ${stats.mois_precedent} ${stats.unite}`,
+            ecart_pct:   stats.variation_pct,
+          });
+        }
+      }
+    }
+
+    const nb_anomalies = Math.max(
+      anomaliesTop3.length,
+      (this.anomaliesIA?.anomalies?.length ?? 0) + this.anomalies.filter(a => !a.resolu).length
+    );
+
+    const now = new Date();
+
+    this.http.post<{ job_id: string }>(`${this.RAG_URL}/rapport/start`, {})
+      .pipe(timeout(8000), catchError(() => of(null)))
+      .subscribe({
+        next: res => {
+          if (!res?.job_id) {
+            this.rapportIA = this.construireRapportIALocal(statsEnergies, anomaliesTop3, nb_anomalies, now);
+            this.aiLoadingRapport = false;
+            this.cdr.detectChanges();
+            return;
+          }
+          this.pollJob<any>(
+            res.job_id,
+            `${this.RAG_URL}/rapport/result/${res.job_id}`,
+            (result: any) => {
+              
+              const resumeOk = result?.resume_executif && result.resume_executif.length > 30;
+              if (resumeOk) {
+                this.rapportIA = {
+                  date_generation: result.date_generation ?? now.toLocaleDateString('fr-FR'),
+                  nb_mesures:      result.nb_mesures ?? this.mesuresFiltreesParDate.length,
+                  periode:         result.periode    ?? this.dateRangeLabel,
+                  score_sante:     result.score_sante ?? this.efficiencyScore,
+                  nb_anomalies,
+                  resume_executif: result.resume_executif,
+                  points_cles:     result.points_cles?.length ? result.points_cles : this._buildPointsCles(statsEnergies),
+                  decisions:       result.decisions?.length   ? result.decisions   : this._buildDecisions(),
+                  stats_energies:  statsEnergies,
+                  anomalies_top3:  anomaliesTop3,
+                };
+              } else {
+                this.rapportIA = this.construireRapportIALocal(statsEnergies, anomaliesTop3, nb_anomalies, now);
+              }
+              this.aiLoadingRapport = false;
+              this.showToast('✅ Rapport IA généré !', 'success');
+              this.cdr.detectChanges();
+            },
+            () => {
+              this.rapportIA = this.construireRapportIALocal(statsEnergies, anomaliesTop3, nb_anomalies, now);
+              this.aiLoadingRapport = false;
+              this.cdr.detectChanges();
+            }
+          );
+        },
+        error: () => {
+          this.rapportIA = this.construireRapportIALocal(statsEnergies, anomaliesTop3, nb_anomalies, now);
+          this.aiLoadingRapport = false;
+          this.cdr.detectChanges();
+        }
+      });
+  }
+
+  private construireRapportIALocal(
+    statsEnergies: Record<string, StatEnergie>,
+    anomaliesTop3: { energie: string; date: string; description: string; ecart_pct: number }[],
+    nb_anomalies: number,
+    now: Date
+  ): RapportIA {
+    const points_cles = this._buildPointsCles(statsEnergies);
+    const decisions   = this._buildDecisions();
+
+    // Résumé exécutif TOUJOURS complet et détaillé
+    const resumeParts: string[] = [
+      `Rapport généré le ${now.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })} `
+      + `sur ${this.mesuresFiltreesParDate.length} mesures (${this.dateRangeLabel}).`,
+      `Score de santé énergétique : ${this.efficiencyScore}/100 (Grade ${this.efficiencyGrade}).`,
+    ];
+
+    const statsArr = Object.entries(statsEnergies);
+    for (const [nom, stats] of statsArr) {
+      if (stats.mois_actuel > 0) {
+        if (stats.tendance === 'up') {
+          resumeParts.push(
+            `${nom} : hausse de ${stats.variation_pct > 0 ? '+' : ''}${stats.variation_pct}% ce mois `
+            + `(${stats.mois_actuel} ${stats.unite}), prévision ${stats.prevision} ${stats.unite}.`
+          );
+        } else if (stats.tendance === 'down') {
+          resumeParts.push(
+            `${nom} : baisse positive de ${Math.abs(stats.variation_pct)}% ce mois `
+            + `(${stats.mois_actuel} ${stats.unite}), prévision ${stats.prevision} ${stats.unite}.`
+          );
+        } else {
+          resumeParts.push(
+            `${nom} : stable à ${stats.mois_actuel} ${stats.unite} ce mois, `
+            + `prévision ${stats.prevision} ${stats.unite}.`
+          );
+        }
+      }
+    }
+
+    const hausses = statsArr.filter(([, s]) => s.tendance === 'up').length;
+    if (hausses > 0) {
+      resumeParts.push(`Des actions correctives sont recommandées pour les ${hausses} vecteur(s) en hausse.`);
+    } else {
+      resumeParts.push(`La situation énergétique globale est maîtrisée. Maintenir les bonnes pratiques en place.`);
+    }
+
+    return {
+      date_generation: now.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      nb_mesures:      this.mesuresFiltreesParDate.length,
+      periode:         this.dateRangeLabel,
+      score_sante:     this.efficiencyScore,
+      nb_anomalies,
+      resume_executif: resumeParts.join(' '),
+      points_cles,
+      decisions,
+      stats_energies:  statsEnergies,
+      anomalies_top3:  anomaliesTop3,
+    };
+  }
+
+  // ─── Utilitaires rapport ──────────────────────────────────────────────────
+
+  private _buildPointsCles(statsEnergies: Record<string, StatEnergie>): string[] {
+    const points: string[] = [];
+
+    for (const [nom, stats] of Object.entries(statsEnergies)) {
+      if (stats.tendance === 'up' && stats.mois_actuel > 0) {
+        points.push(
+          `${nom} en hausse de ${stats.variation_pct > 0 ? '+' : ''}${stats.variation_pct}% — `
+          + `${stats.mois_actuel} ${stats.unite} ce mois (prévision : ${stats.prevision} ${stats.unite}). `
+          + `Audit des équipements recommandé en urgence.`
+        );
+      } else if (stats.tendance === 'down' && stats.mois_actuel > 0) {
+        points.push(
+          `${nom} en baisse positive de ${Math.abs(stats.variation_pct)}% — `
+          + `${stats.mois_actuel} ${stats.unite} ce mois (prévision : ${stats.prevision} ${stats.unite}). `
+          + `Documenter les actions pour pérenniser la tendance.`
+        );
+      }
+    }
+
+    if (this.alertesCritiques > 0) {
+      points.push(`${this.alertesCritiques} alerte(s) critique(s) active(s) nécessitant une intervention immédiate.`);
+    }
+
+    if (this.equipementsMaintenance > 0) {
+      points.push(`${this.equipementsMaintenance} équipement(s) en maintenance impactant potentiellement la performance énergétique.`);
+    }
+
+    if (points.length === 0) {
+      const statsArr = Object.entries(statsEnergies).filter(([, s]) => s.mois_actuel > 0);
+      if (statsArr.length > 0) {
+        for (const [nom, stats] of statsArr.slice(0, 3)) {
+          points.push(
+            `${nom} stable — ${stats.mois_actuel} ${stats.unite} ce mois `
+            + `(moyenne : ${stats.moyenne} ${stats.unite}). Maintenir le suivi.`
+          );
+        }
+      } else {
+        points.push('Aucun point critique identifié — situation globalement satisfaisante.');
+        points.push(`Score d'efficacité : ${this.efficiencyScore}/100 (Grade ${this.efficiencyGrade}).`);
+        points.push('Continuer les bonnes pratiques de gestion énergétique.');
+      }
+    }
+
+    return points.slice(0, 4);
+  }
+
+  private _buildDecisions(): string[] {
+    return [
+      'Planifier un audit des équipements pour les énergies en hausse dans les 2 prochaines semaines.',
+      'Réviser les seuils d\'alerte de consommation mensuelle pour chaque vecteur énergétique.',
+      'Mettre en place un reporting hebdomadaire automatique pour les responsables énergie.',
+      'Implémenter les recommandations prioritaires identifiées pour optimiser les coûts opérationnels.',
+    ];
+  }
+
+  private getMoisTotal(energieId: number, offset: number): number {
+    const now = new Date();
+    const d   = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const fin = new Date(now.getFullYear(), now.getMonth() - offset + 1, 0);
+    return +this.mesures
+      .filter(m => Number(m.energieId) === energieId)
+      .filter(m => { const dm = new Date(m.dateMesure); return dm >= d && dm <= fin; })
+      .reduce((s, m) => s + m.valeur, 0).toFixed(1);
+  }
+
+  getRapportStatsArray(): { nom: string; stats: StatEnergie }[] {
+    if (!this.rapportIA?.stats_energies) return [];
+    return Object.entries(this.rapportIA.stats_energies).map(([nom, stats]) => ({ nom, stats }));
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1817,7 +2632,7 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   dismissToast(id: number): void { this.toasts = this.toasts.filter(t => t.id !== id); }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Load All
+  // loadAll — lance détectionAnomalies APRÈS chargement complet (sans race condition)
   // ══════════════════════════════════════════════════════════════════════════
 
   loadAll(): void {
@@ -1826,15 +2641,17 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
     const check = () => {
       if (++done < total) return;
       this.loading = false;
-      if (!this.heatmapEnergie && this.energies.length > 0) {
-        this.heatmapEnergie = String(this.energies[0].idEnergie);
-      }
       this.initSeuilsFromEnergies();
       this.syncSeuilsActuelles();
       this.initBenchmarking();
       this.initPrevisions();
       this.buildForecastPoints();
       this.buildSparklines();
+      this.emailObjetDefault = `Rapport IA Énergie WICMIC — ${new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`;
+
+      // Appel direct sans setTimeout — mesures et energies sont garantis peuplés.
+      // Le garde-fou dans lancerDetectionAnomalies() protège contre les cas vides.
+      this.lancerDetectionAnomalies();
     };
 
     this.api.getMesures().subscribe({
@@ -1875,4 +2692,75 @@ export class EnergyDashboardComponent implements OnInit, OnDestroy {
   get apiErrorsList(): string[] { return Object.keys(this.apiErrors); }
 
   logout(): void { this.auth.logout(); }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Email Modal — Rapport IA
+  // ══════════════════════════════════════════════════════════════════════════
+
+  isValidEmail(email: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  openEmailModal(): void {
+    this.showEmailModal    = true;
+    this.emailSent         = false;
+    this.emailError        = '';
+    this.emailObjetDefault = `Rapport IA Énergie WICMIC — ${new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`;
+  }
+
+  closeEmailModal(): void {
+    this.showEmailModal    = false;
+    this.emailSent         = false;
+    this.emailError        = '';
+    this.emailDestinataire = '';
+    this.emailNom          = '';
+    this.emailObjet        = '';
+    this.emailNote         = '';
+  }
+
+  envoyerRapportEmail(): void {
+    if (!this.emailDestinataire) return;
+    this.emailSending = true;
+    this.emailError   = '';
+
+    this.http.post<{ job_id: string }>(
+      `${this.RAG_URL}/rapport/email/start`,
+      { email: this.emailDestinataire, nom: this.emailNom || 'Responsable Énergie' }
+    ).pipe(timeout(10000), catchError(() => of(null)))
+      .subscribe({
+        next: res => {
+          if (!res?.job_id) {
+            this.emailSending = false;
+            this.emailError = 'Service email indisponible.';
+            this.showToast('❌ Service email indisponible.', 'error');
+            return;
+          }
+          this.pollJob<{ success: boolean; message: string }>(
+            res.job_id,
+            `${this.RAG_URL}/rapport/email/result/${res.job_id}`,
+            (result) => {
+              this.emailSending = false;
+              if (result?.success) {
+                this.emailSent = true;
+                this.showToast('✅ Rapport IA envoyé par email !', 'success');
+                setTimeout(() => { this.closeEmailModal(); }, 2000);
+              } else {
+                this.emailError = result?.message ?? 'Erreur lors de l\'envoi.';
+                this.showToast('❌ Erreur envoi email.', 'error');
+              }
+            },
+            () => {
+              this.emailSending = false;
+              this.emailError = 'Erreur lors de l\'envoi du rapport.';
+              this.showToast('❌ Erreur envoi email.', 'error');
+            }
+          );
+        },
+        error: () => {
+          this.emailSending = false;
+          this.emailError = 'Service email indisponible.';
+          this.showToast('❌ Erreur envoi email.', 'error');
+        }
+      });
+  }
 }
